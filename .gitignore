@@ -1,0 +1,36 @@
+# Environnements virtuels (Conda, venv, etc.)
+.conda
+.conda_env
+env/
+venv/
+.env
+.env/
+environment.yml  # (Optionnel : si tu veux le versionner, retire cette ligne)
+
+# Fichiers Python compilés
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Fichiers de configuration IDE/éditeur
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Données brutes et fichiers temporaires
+data/raw/*  # (Optionnel : si tu ne veux pas versionner les fichiers GPX/Excel bruts)
+*.gpx
+*.xlsx
+*.xls
+
+# Fichiers générés (GeoJSON, CSV traités)
+data/processed/*  # (Optionnel : si ces fichiers sont régénérés automatiquement)
+
+# Fichiers de logs et cache
+*.log
+.DS_Store
+
+# Fichiers de dépendances (optionnel : à versionner si partagé)
+requirements.txt  # (À versionner si tu l'utilises)
+test.temp
