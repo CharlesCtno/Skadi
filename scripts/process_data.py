@@ -5,7 +5,7 @@ def excel_to_csv(input_excel, output_csv):
     df = pd.read_excel(input_excel, engine="openpyxl")
 
     # Select columns (adjust as needed)
-    columns = ["Name", "Type", "Altitude", "Elevation Gain", "Distance", "GPX File"]
+    columns = ["Name", "Altitude [m]", "Summit Latitude", "Summit Longitude", "Season", "Type", "Grade", "Distance [km]", "Duration [h]", "Elevation Gain [m]",  "GPX File"]
     df = df[columns]
 
     # Save to CSV
@@ -13,4 +13,6 @@ def excel_to_csv(input_excel, output_csv):
     print(f"Saved: {output_csv}")
 
 # Example usage
-excel_to_csv("data/raw/activites.xlsx", "data/processed/activites.csv")
+excel_to_csv("data/raw/activities.xlsx", "data/processed/activities.csv")
+
+#Print the number of lines on the csv

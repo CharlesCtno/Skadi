@@ -1,0 +1,11 @@
+Name,Altitude [m],Summit Latitude,Summit Longitude,Season,Type,Grade,Distance [km],Duration [h],Elevation Gain [m],GPX File
+Dent d'oche,2222.0,46.35408255678847,6.731091920716606,Automne,Hike,T4,13.6,5.3,1379.0,
+Cornette de Bise,2432.0,46.33352064091501,6.783467026072189,Eté,Hike,,16.8,4.9,1362.0,Les_Cornettes_de_Bise
+,,,,Hiver,Randoneige,,14.6,4.3,1410.0,
+Mont Gardy,2201.0,46.35104051593252,6.800183369977716,Eté,Hike,T5/F,14.7,6,1450.0,
+Grande Jumelle,2215.0,46.352664696483046,6.8133591473731325,,,,,,,
+,,,,Automne,Hike,F,10.3,2021-03-03 00:00:00,994.0,
+Petite Jumelle,2182.0,46.35328033537899,6.816464204272272,Eté,Mountaineering,PD,,,,
+Le Grammont,2172.0,46.358574985358366,6.820794927974556,Hiver,Randoneige,,13.6,4.1,1105.0,
+,,,,Eté,Hike,,14.4,5,1150.0,Grammont_&_Alamont
+Alamont,1900.0,46.35103569334307,6.832081554594534,,,,,,,Grammont_&_Alamont
