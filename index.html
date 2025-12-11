@@ -1,36 +1,108 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>SKADI Summits Map</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.Default.css" />
-    <style>
-        #map { height: 600px; }
-        #filters { margin: 10px; padding: 10px; background: #f0f0f0; }
-        .summit-icon-completed { color: green; }
-        .summit-icon-planned { color: orange; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Summit Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+    }
+
+    header {
+      background-color: #333;
+      color: white;
+      padding: 10px 20px;
+      text-align: center;
+    }
+
+    #filters {
+      position: absolute;
+      top: 70px;
+      left: 10px;
+      z-index: 1000;
+      background: white;
+      padding: 10px;
+      border-radius: 5px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+    }
+
+    .filter-group {
+      margin-bottom: 10px;
+    }
+
+    .filter-group label {
+      margin-right: 5px;
+    }
+
+    #apply-filters {
+      margin-top: 10px;
+      padding: 5px 10px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    #apply-filters:hover {
+      background: #45a049;
+    }
+
+    #map {
+      height: calc(100vh - 70px);
+      width: 100%;
+      margin-top: 70px;
+    }
+
+    /* Hide Leaflet zoom controls */
+    .leaflet-control-zoom {
+      display: none !important;
+    }
+  </style>
 </head>
 <body>
-    <h1>My Summits</h1>
-    <div id="filters">
-        <label>Activity Type:</label>
-        <select id="filter-type">
-            <option value="all">All</option>
-            <option value="ski">Ski</option>
-            <option value="hike">Hike</option>
-        </select>
-        <label>Status:</label>
-        <select id="filter-status">
-            <option value="all">All</option>
-            <option value="completed">Completed</option>
-            <option value="planned">Planned</option>
-        </select>
+  <header>
+    <h1>Summit Map</h1>
+  </header>
+  <div id="filters">
+    <div class="filter-group">
+      <label for="activity-type">Activity Type:</label>
+      <select id="activity-type">
+        <option value="all">All</option>
+        <option value="Ski">Ski</option>
+        <option value="Hike">Hike</option>
+        <option value="Mountaineering">Mountaineering</option>
+      </select>
     </div>
-    <div id="map"></div>
-    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/leaflet.markercluster.js"></script>
-    <script src="script.js"></script>
+
+    <div class="filter-group">
+      <label for="status">Status:</label>
+      <select id="status">
+        <option value="all">All</option>
+        <option value="to do">To Do</option>
+        <option value="completed">Completed</option>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label for="season">Season:</label>
+      <select id="season">
+        <option value="all">All</option>
+        <option value="Winter">Winter</option>
+        <option value="Spring">Spring</option>
+        <option value="Summer">Summer</option>
+        <option value="Autumn">Autumn</option>
+      </select>
+    </div>
+
+    <button id="apply-filters">Apply Filters</button>
+  </div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>

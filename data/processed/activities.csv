@@ -1,11 +1,52 @@
-Name,Altitude [m],Summit Latitude,Summit Longitude,Season,Type,Grade,Distance [km],Duration [h],Elevation Gain [m],GPX File
-Dent d'oche,2222.0,46.35408255678847,6.731091920716606,Automne,Hike,T4,13.6,5.3,1379.0,
-Cornette de Bise,2432.0,46.33352064091501,6.783467026072189,Eté,Hike,,16.8,4.9,1362.0,Les_Cornettes_de_Bise
-,,,,Hiver,Randoneige,,14.6,4.3,1410.0,
-Mont Gardy,2201.0,46.35104051593252,6.800183369977716,Eté,Hike,T5/F,14.7,6,1450.0,
-Grande Jumelle,2215.0,46.352664696483046,6.8133591473731325,,,,,,,
-,,,,Automne,Hike,F,10.3,2021-03-03 00:00:00,994.0,
-Petite Jumelle,2182.0,46.35328033537899,6.816464204272272,Eté,Mountaineering,PD,,,,
-Le Grammont,2172.0,46.358574985358366,6.820794927974556,Hiver,Randoneige,,13.6,4.1,1105.0,
-,,,,Eté,Hike,,14.4,5,1150.0,Grammont_&_Alamont
-Alamont,1900.0,46.35103569334307,6.832081554594534,,,,,,,Grammont_&_Alamont
+Name,Altitude [m],Summit Latitude,Summit Longitude,Season,Type,Grade,Distance [km],Duration [h],Elevation Gain [m],GPX File,Project,GPXName
+Dent d'oche,2222,46.35408255678847,6.731091920716606,Autumn,Hike,T4,13.6,5.3,1379.0,f,Proxima,f
+Cornette de Bise,2432,46.33352064091501,6.783467026072189,Summer,Mountaineering,,16.8,4.9,1362.0,Les_Cornettes_de_Bise,Proxima,Les Cornettes de Bise
+Cornette de Bise,2432,46.33352064091502,6.78346702607219,Winter,Snow Hike,,14.6,4.3,1410.0,f,4000,f
+Mont Gardy,2201,46.35104051593252,6.800183369977716,Summer,Hike,T5/F,14.7,6,1450.0,f,4000,f
+Grande Jumelle,2215,46.352664696483046,6.8133591473731325,Summer,Hike,T5/F,14.7,6,1450.0,f,4000,f
+Grande Jumelle,2215,46.352664696483046,6.8133591473731325,Autumn,Hike,F,10.3,2021-03-03 00:00:00,994.0,f,4000,f
+Petite Jumelle,2182,46.35328033537899,6.816464204272272,Summer,Mountaineering,PD,,,,,Annecy,
+Le Grammont,2172,46.358574985358366,6.820794927974556,Winter,Snow Hike,,13.6,4.1,1105.0,Grammont,Annecy,Grammont
+Le Grammont,2172,46.358574985358366,6.820794927974557,Summer,Hike,,14.4,5,1150.0,Grammont_&_Alamont,Annecy,Grammont & Alamont
+Alamont,1900,46.35103569334307,6.832081554594534,Summer,Hike,,14.4,5,1150.0,Grammont_&_Alamont,Aravis,Grammont & Alamont
+Signal des Voirons,1457,46.23065551037012,6.355090281154984,Summer,Ski,,1.8,0.5,120.0,Signal_des_Voirons,Aravis,Signal des Voirons
+Tour d'Ai,2331,46.37235154385177,7.001974469266802,Summer,Hike,,11.7,3.3,761.0,f,Aravis,f
+Tour d'Ai,2331,46.37235154385178,7.001974469266803,Autumn,Ski,,9.8,2.5,607.0,Tour_d_Ai,Aravis,Tour d Ai
+Tour de Mayen,2326,46.37596167746993,7.007787258733385,Summer,Ski,,14.15,3.8,733.0,Tour_de_Mayen,Proxima,Tour de Mayen
+Tour de Mayen,2326,46.37596167746994,7.007787258733386,Summer,Hike,,13.4,4.18,659.0,Tour_de_Mayen_Famelon,Proxima,Tour de Mayen Famelon
+Tour de Famelon,2138,46.38371985956815,7.02338286743082,Summer,Hike,,13.4,4.18,659.0,Tour_de_Mayen_Famelon,Proxima,Tour de Mayen Famelon
+Le Truex,2194,46.38238765931213,7.01321193084642,Summer,Hike,,13.4,4.18,659.0,Tour_de_Mayen_Famelon,Proxima,Tour de Mayen Famelon
+Rochers de Naye,2042,46.43197738637657,6.9759908161325965,Summer,Hike,,11.8,3.1,807.0,f,Proxima,f
+Rochers de Naye,2042,46.43197738637658,6.9759908161325965,Summer,Trail running,,10.3,1.7,913.0,f,Proxima,f
+Dent de Jaman,1875,46.44530584170046,6.974649939418076,Summer,Trail running,,10.3,1.7,913.0,f,Proxima,f
+Dent de Jaman,1875,46.44530584170047,6.974649939418077,Winter,Snow Hike,,7.1,3,825.0,f,Proxima,f
+Dent de Jaman,1875,46.44530584170048,6.974649939418078,Summer,Hike,,11.2,4.5,1243.0,f,Proxima,f
+Dent de Hautaudon,1871,46.44510169347598,6.988155367487896,Summer,Hike,,11.2,4.5,1243.0,f,Proxima,f
+Cape au Moine,1941,46.47076308986559,6.978799822444015,Summer,Hike,,17.5,4.8,1129.0,f,Proxima,f
+Vanil des Artses,1992,46.4829490968863,6.987435774932586,Winter,Snow Hike,,9.1,4,1024.0,f,Proxima,f
+Col de Lys,1779,46.502648861460585,6.991931605639442,Winter,Ski,,9.5,3,741.0,f,Proxima,f
+Lys Derrey,1864,,,Winter,Ski,,8.3,2.5,767.0,f,Proxima,f
+Dent de Lys,2014,46.50810098660188,7.002866191819916,Summer,Hike,T4,14.0,3.7,1336.0,f,Proxima,f
+Grand Sex,1907,46.51199398320189,7.012699959615742,,Hike,PD,,,,,Proxima,
+Petit Sex,1880,46.51341448759473,7.0138080636467945,Spring,Hike,,11.7,6,1190.0,f,Proxima,f
+Vanil Blanc,1828,46.51803800036078,7.01790004427712,Spring,Hike,,11.7,6,1190.0,f,Proxima,f
+Vanil de l'Arche,1581,46.52371521336488,7.029288623978296,Spring,Hike,,11.7,6,1190.0,f,Proxima,f
+Moléson,2002,46.5493181454742,7.017058828961793,Spring,Hike,,8.7,2.2,660.0,f,Proxima,f
+Teysachaux,1909,46.5344815231653,6.996215598259597,Spring,Hike,,6.9,2.3,608.0,f,Proxima,f
+Teysachaux,1909,46.534481523165304,6.996215598259598,Spring,Hike,,14.0,3.7,973.0,f,Proxima,f
+Teysachaux,1909,46.534481523165304,6.996215598259599,Winter,Ski,,5.8,1.8,770.0,f,Proxima,f
+Oldenhorn (Becca d'audon),3123,46.32943725842781,7.221453467380535,Winter,Ski,,,,,,Proxima,
+Sex rouge,2971,46.32777824860288,7.202542659444206,,,,,,,,Proxima,
+Les Diablerets,3210,46.31298969442746,7.198583588021995,,,,,,,,Proxima,
+Tête Ronde,3036,46.30402935611935,7.177568298045458,,Ski,AD+,,,,,Proxima,
+Culan,2789,46.3053496168095,7.155895969545055,,,,,,,,Proxima,
+Tête à Pierre Grept,2903,46.252978787421895,7.155295359375205,,Mountaineering,AD+,,,,,Proxima,
+Grand Muveran,3051,46.23770365388434,7.126167028672361,Summer,Hike,T5,13.0,4.5,1244.0,f,Proxima,f
+Petit Muveran,2810,46.22408240163547,7.122613474692355,,Hike,PD+,,,,,Bauges,
+Pointe d'Aufalle,2725,46.21743075065217,7.11499390012367,Winter,Ski,,,,,,Bauges,
+Dent Favre,2917,46.2102575274126,7.10376693692297,Autumn,Hike,T5/F,19.0,10,1808.0,f,Bauges,f
+Tête Séri,2851,46.1985800545764,7.093928115314242,Autumn,Hike,T5/F,19.0,10,1808.0,f,Bauges,f
+Tête Noire,2871,46.2015418626168,7.08830732281402,Autumn,Hike,T5/F,19.0,10,1808.0,f,Bauges,f
+Grande Dent de Morcles,2969,46.19931832557423,7.075888212874346,Summer,Hike,T4,14.7,5.3,1379.0,f,Bauges,f
+Grande Dent de Morcles,2969,46.19931832557423,7.075888212874347,Winter,Ski,,26.0,2 jours,2354.0,f,Bauges,f
+Petite Dent de Morcles,2229,46.20095575103517,7.071241113631226,,Climbing,TD+,,,,,Bauges,
