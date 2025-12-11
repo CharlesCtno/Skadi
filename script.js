@@ -72,8 +72,8 @@ const projectColors = {
     'Proxima': '#45818e',
     'Annecy': '#3c78d8',
     'Bauges': '#674ea7',
-    '4000': '#a64d79',
-    'Aravis': '#f1c232'
+    '4000': '#f1c232',
+    'Aravis': '#a64d79'
 };
 
 // Default color for activities without a project
@@ -130,9 +130,11 @@ fetch("data/processed/activities.csv")
 
                 let trackColor;
                 if (type.toLowerCase().includes('ski')) {
-                    trackColor = '#a64d79';
+                    trackColor = '#46bdc6';
                 } else if (type.toLowerCase().includes('hike')) {
-                    trackColor = '#45818e';
+                    trackColor = '#ff6d01';
+                } else if (type.toLowerCase().includes('mountaineering')) {
+                    trackColor = '#ea4335';
                 } else {
                     trackColor = defaultColor;
                 }
