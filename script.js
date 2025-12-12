@@ -50,6 +50,17 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
                         <b>Duration:</b> ${duration}<br>
                         <b>Elevation Gain:</b> ${elevationGain} m
                     `);
+
+                    // Add click event to bring the track to the front
+                    layer.on('click', function(e) {
+                        layer.bringToFront(); // Bring the clicked layer to the front
+                        layer.setStyle({ weight: 6 }); // Increase weight to highlight
+                    });
+
+                    // Reset style when popup is closed
+                    layer.on('popupclose', function(e) {
+                        layer.setStyle({ weight: 3 }); // Reset weight
+                    });
                 }
             }).addTo(map);
 
@@ -67,8 +78,17 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
         });
 }
 
-// Function to convert decimal hours to "XhYmin" format
-function formatDuration(decimalHours) {
+// Function to format duration, handling both hours and days
+function formatDuration(duration) {
+    if (typeof duration === 'string' && duration.includes('day')) {
+        return duration; // Return as is if it's in days format (e.g., "2 days")
+    }
+
+    const decimalHours = parseFloat(duration);
+    if (isNaN(decimalHours)) {
+        return "N/A";
+    }
+
     const hours = Math.floor(decimalHours);
     const minutes = Math.round((decimalHours - hours) * 60);
     return minutes < 10 ? `${hours}h0${minutes}` : `${hours}h${minutes}`;
@@ -79,8 +99,8 @@ const projectColors = {
     'Proxima': '#45818e',
     'Annecy': '#3c78d8',
     'Bauges': '#674ea7',
-    '4000': '#a64d79',
-    'Aravis': '#f1c232'
+    '4000': '#f1c232',
+    'Aravis': '#a64d79'
 };
 
 // Default color for activities without a project
@@ -146,7 +166,7 @@ fetch("data/processed/activities.csv")
                     trackColor = defaultColor;
                 }
 
-                const formattedDuration = duration ? formatDuration(parseFloat(duration)) : "N/A";
+                const formattedDuration = formatDuration(duration);
                 loadGeoJSON(gpxFile, trackColor, season, type, grade, distance, formattedDuration, elevationGain, gpxName);
             }
         });
