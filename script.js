@@ -7,10 +7,11 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 // Store markers and tracks for filtering
 let markers = [];
 let tracks = [];
+let loadedGeoJSONFiles = {}; // Object to keep track of loaded GeoJSON files
 
 // Function to create a colored triangle icon with outline
 function createTriangleIcon(color, isCompleted) {
-    const outlineWidth = isCompleted ? '2' : '0';
+    const outlineWidth = isCompleted ? '2' : '0.3';
     return L.divIcon({
         html: `
             <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
@@ -25,6 +26,10 @@ function createTriangleIcon(color, isCompleted) {
 
 // Function to load GeoJSON files dynamically
 function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, elevationGain, gpxName) {
+    if (loadedGeoJSONFiles[gpxFile]) {
+        return; // Skip if the file has already been loaded
+    }
+
     fetch(`data/processed/${gpxFile}.geojson`)
         .then(response => {
             if (!response.ok) {
@@ -54,6 +59,8 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
                 status: 'completed',
                 season: season
             });
+
+            loadedGeoJSONFiles[gpxFile] = true; // Mark this file as loaded
         })
         .catch(error => {
             console.error(`Error loading ${gpxFile}.geojson:`, error);
@@ -72,8 +79,8 @@ const projectColors = {
     'Proxima': '#45818e',
     'Annecy': '#3c78d8',
     'Bauges': '#674ea7',
-    '4000': '#f1c232',
-    'Aravis': '#a64d79'
+    '4000': '#a64d79',
+    'Aravis': '#f1c232'
 };
 
 // Default color for activities without a project
@@ -138,6 +145,7 @@ fetch("data/processed/activities.csv")
                 } else {
                     trackColor = defaultColor;
                 }
+
                 const formattedDuration = duration ? formatDuration(parseFloat(duration)) : "N/A";
                 loadGeoJSON(gpxFile, trackColor, season, type, grade, distance, formattedDuration, elevationGain, gpxName);
             }

@@ -1,185 +1,182 @@
 Name,Altitude [m],Summit Latitude,Summit Longitude,Season,Type,Grade,Distance [km],Duration [h],Elevation Gain [m],GPX File,Project,GPXName
-Dent d'oche,2222.0,46.3529787,6.7313182,Autumn,Hike,T4,13.6,5.3,1379.0,f,Proxima,f
+Dent d'oche,2222.0,46.3529787,6.7313182,Autumn,Hike,T4,13.6,5.3,1379.0,Dent_d'Oche,Proxima,Dent d'Oche
 Cornette de Bise,2432.0,46.332592,6.784591,Summer,Hike,,16.8,4.9,1362.0,Les_Cornettes_de_Bise,Proxima,Les Cornettes de Bise
-,,,,Winter,Hike,,14.6,4.3,1410.0,f,Proxima,f
-Mont Gardy,2201.0,46.350235,6.79945,Summer,Hike,T5/F,14.7,6,1450.0,f,Proxima,f
-Grande Jumelle,2215.0,46.35233,6.814068,,,,,,,f,Proxima,f
-,,,,Autumn,Hike,F,10.3,2021-03-03 00:00:00,994.0,f,Proxima,f
+,,,,Winter,Hike,,14.6,4.3,1410.0,,Proxima,
+Mont Gardy,2201.0,46.350235,6.79945,Summer,Hike,T5/F,14.7,6,1450.0,Grande_Jumelle_&_Mont_Gardy,Proxima,Grande Jumelle & Mont Gardy
+,,,,,,,,,,,Proxima,
+Grande Jumelle,2215.0,46.35233,6.814068,Autumn,Hike,F,10.3,3.3,994.0,Grande_Jumelle,Proxima,Grande Jumelle
 Petite Jumelle,2182.0,46.353019,6.815163,Summer,Mountaineering,PD,,,,,Proxima,
-Grammont,2172.0,46.357423,6.821187,Winter,Hike,,13.6,4.1,1105.0,Grammont,Proxima,Grammont
-,,,,Summer,Hike,,14.4,5,1150.0,Grammont_&_Alamont,Proxima,Grammont & Alamont
-Alamont,1900.0,46.35106,6.832964,,,,,,,Grammont_&_Alamont,Proxima,Grammont & Alamont
+Grammont,2172.0,46.357423,6.821187,Winter,Ski,,13.6,4.1,1105.0,Grammont,Proxima,Grammont
+,,,,,,,,,,,Proxima,
+Alamont,1900.0,46.35106,6.832964,Summer,Hike,,14.4,5,1150.0,Grammont_&_Alamont,Proxima,Grammont & Alamont
 Signal des Voirons,1457.0,46.2298694,6.3549317,Summer,Hike,,1.8,0.5,120.0,Signal_des_Voirons,Proxima,Signal des Voirons
-Tour d'Ai,2331.0,46.372104,7.001968,"Summer
-","Hike
-",,11.7,3.3,761.0,f,Proxima,f
-,,,,Autumn,Hike,,9.8,2.5,607.0,Tour_d_Ai,Proxima,Tour d Ai
+Tour d'Aï,2331.0,46.372104,7.001968,Autumn,Hike,,9.8,2.5,607.0,Tour_d_Ai,Proxima,Tour d Ai
+,,,,Summer,Hike,,11.7,3.3,761.0,,Proxima,
 Tour de Mayen,2326.0,46.374658,7.008282,Summer,Hike,,14.15,3.8,733.0,Tour_de_Mayen,Proxima,Tour de Mayen
 ,,,,Summer,Hike,,13.4,4.18,659.0,Tour_de_Mayen_Famelon,Proxima,Tour de Mayen Famelon
-Tour de Famelon,2138.0,46.383233,7.023833,,,,,,,Tour_de_Mayen_Famelon,Proxima,Tour de Mayen Famelon
-Les Truex,2194.0,46.379607,7.013075,,,,,,,Tour_de_Mayen_Famelon,Proxima,Tour de Mayen Famelon
-Rochers de Naye,2042.0,46.431824,6.976052,Summer,Hike,,11.8,3.1,807.0,f,Proxima,f
-,,,,Summer,Trail running,,10.3,1.7,913.0,f,Proxima,f
-Dent de Jaman,1875.0,46.44496,6.974797,,,,,,,f,Proxima,f
-,,,,Winter,Hike,,7.1,3,825.0,f,Proxima,f
-,,,,Summer,Hike,,11.2,4.5,1243.0,f,Proxima,f
-Dent de Hautadon,1871.0,46.44506,6.988643,,,,,,,f,Proxima,f
-Cape au Moine,1941.0,46.470358,6.978882,Summer,Hike,,17.5,4.8,1129.0,f,Proxima,f
-Vanil des Artses,1992.0,46.482103,6.98735,Winter,Hike,,9.1,4,1024.0,f,Proxima,f
-Col de Lys,1779.0,46.1853143,6.6901312,Winter,Ski,,9.5,3,741.0,f,Proxima,f
-Lys Derrey,1864.0,46.503865,6.995504,Winter,Ski,,8.3,2.5,767.0,f,Proxima,f
-Dent de Lys,2014.0,46.507679,7.003036,Summer,Hike,T4,14,3.7,1336.0,f,Proxima,f
-Grand Sex,1907.0,46.511655,,,Hike,PD,,,,,Proxima,
-Petit Sex,1880.0,46.51341448759473,7.0138080636467945,Spring,Hike,,11.7,6,1190.0,f,Proxima,f
-Vanil Blanc,1828.0,46.517758,7.017984,,,,,,,f,Proxima,f
-Vanil de l'Arche,1581.0,46.52371521336488,7.029288623978296,,,,,,,f,Proxima,f
-Moléson,2002.0,46.548948,7.017136,Spring,Hike,,8.7,2.2,660.0,f,Proxima,f
+Tour de Famelon,2138.0,46.383233,7.023833,Summer,Hike,,13.4,4.18,659.0,Tour_de_Mayen_Famelon,Proxima,Tour de Mayen Famelon
+Les Truex,2194.0,46.379607,7.013075,Summer,Hike,,13.4,4.18,659.0,Tour_de_Mayen_Famelon,Proxima,Tour de Mayen Famelon
+Rochers de Naye,2042.0,46.431824,6.976052,Summer,Hike,,11.8,3.1,807.0,Rochers_de_Naye,Proxima,Rochers de Naye
+,,,,,,,,,,Dent_de_Jaman_Rochers_de_Naye,Proxima,Dent de Jaman Rochers de Naye
+Dent de Jaman,1875.0,46.44496,6.974797,Summer,Trail running,,10.3,1.7,913.0,Dent_de_Jaman_Rochers_de_Naye,Proxima,Dent de Jaman Rochers de Naye
+,,,,Winter,Hike,,7.1,3,825.0,Dent_de_Jaman,Proxima,Dent de Jaman
+,,,,,,,,,,Dent_de_Hautadon_&_Jaman,Proxima,Dent de Hautadon & Jaman
+Dent de Hautadon,1871.0,46.44506,6.988643,Summer,Hike,,11.2,4.5,1243.0,Dent_de_Hautadon_&_Jaman,Proxima,Dent de Hautadon & Jaman
+Cape au Moine,1941.0,46.470358,6.978882,Summer,Hike,,17.5,4.8,1129.0,Cape_au_Moine,Proxima,Cape au Moine
+Vanil des Artses,1992.0,46.482103,6.98735,Winter,Hike,,9.1,4,1024.0,Vanil_des_Artses,Proxima,Vanil des Artses
+Col de Lys,1779.0,46.1853143,6.6901312,Winter,Ski,,9.5,3,741.0,,Proxima,
+Lys Derrey,1864.0,46.503865,6.995504,Winter,Ski,,8.3,2.5,767.0,,Proxima,
+Dent de Lys,2014.0,46.507679,7.003036,Summer,Hike,T4,14.0,3.7,1336.0,Dent_de_Lys,Proxima,Dent de Lys
+Grand Sex,1907.0,46.511655,7.012665,,Hike,PD,,,,,Proxima,
+Petit Sex,1880.0,46.5134144875947,7.01380806364679,Spring,Hike,,11.7,6,1190.0,Vanil_de_l'Arche_Vanil Blanc_&_Petit Sex,Proxima,Vanil de l'Arche Vanil Blanc & Petit Sex
+Vanil Blanc,1828.0,46.517758,7.017984,Spring,Hike,,11.7,6,1190.0,Vanil_de_l'Arche_Vanil Blanc_&_Petit Sex,Proxima,Vanil de l'Arche Vanil Blanc & Petit Sex
+Vanil de l'Arche,1581.0,46.5237152133648,7.02928862397829,Spring,Hike,,11.7,6,1190.0,Vanil_de_l'Arche_Vanil Blanc_&_Petit Sex,Proxima,Vanil de l'Arche Vanil Blanc & Petit Sex
+Moléson,2002.0,46.548948,7.017136,Spring,Hike,,8.7,2.2,660.0,Moléson_Sunset,Proxima,Moléson Sunset
 Teysachaux,1909.0,46.534025,6.996282,Spring,Hike,,6.9,2.3,608.0,f,Proxima,f
-,,,,Spring,Hike,,14,3.7,973.0,f,Proxima,f
+,,,,Spring,Hike,,14.0,3.7,973.0,f,Proxima,f
 ,,,,Winter,Ski,,5.8,1.8,770.0,f,Proxima,f
 Oldenhorn (Becca d'audon),3123.0,46.329421,7.221732,Winter,Ski,,,,,,Proxima,
 Sex rouge,2971.0,46.327149,7.202439,,,,,,,,Proxima,
 Les Diablerets,3210.0,46.304414,7.190364,,,,,,,,Proxima,
-Tête Ronde,3036.0,43.2713824,5.4930348,,Ski,AD+,,,,,Proxima,
-Culan,2789.0,46.4564993,2.2886782,,,,,,,,Proxima,
+Tête Ronde,3036.0,46.303799,7.177578,,Ski,AD+,,,,,Proxima,
+Culan,2789.0,46.304577,7.15611,,,,,,,,Proxima,
 Tête à Pierre Grept,2903.0,46.252754,7.155238,,Mountaineering,AD+,,,,,Proxima,
-Grand Muveran,3051.0,46.237172,7.126162,"Summer
-",Hike,T5,13,4.5,1244.0,f,Proxima,f
+Grand Muveran,3051.0,46.237172,7.126162,Summer,Hike,T5,13.0,4.5,1244.0,f,Proxima,f
 Petit Muveran,2810.0,46.223243,7.122096,,Hike,PD+,,,,,Proxima,
 Pointe d'Aufalle,2725.0,46.217104,7.114929,Winter,Ski,,,,,,Proxima,
-Dent Favre,2917.0,46.210777,7.103728,Autumn,Hike,T5/F,19,10,1808.0,f,Proxima,f
-Tête Séri,2851.0,46.198616,7.093933,,,,,,,f,Proxima,f
-Tête Noire,2871.0,45.9079637,6.7433012,,,,,,,f,Proxima,f
+Dent Favre,2917.0,46.210777,7.103728,Autumn,Hike,T5/F,19.0,10,1808.0,f,Proxima,f
+Tête Séri,2851.0,46.198616,7.093933,Autumn,Hike,T5/F,19.0,10,1808.0,f,Proxima,f
+Tête Noire,2871.0,45.9079637,6.7433012,Autumn,Hike,T5/F,19.0,10,1808.0,f,Proxima,f
 Grande Dent de Morcles,2969.0,46.199331,7.075533,Summer,Hike,T4,14.7,5.3,1379.0,f,Proxima,f
-,,,,Winter,Ski,,26,2 jours,2354.0,f,Proxima,f
+,,,,Winter,Ski,,26.0,2 jours,2354.0,f,Proxima,f
 Petite Dent de Morcles,2229.0,46.201013,7.07125,,Climbing,TD+,,,,,Proxima,
 Pointe d'Aveneyre,2026.0,46.417371,7.004779,Autumn,Hike,,8.9,2.6,746.0,f,Proxima,f
-,,,,Spring,Hike,,56,3j,3852.0,f,Proxima,f
-Planachaux,1925.0,46.444143,7.054783,,,,,,,f,,f
-Monts Chevreuils,1749.0,46.434453,7.084135,,,,,,,f,,f
-Pointe de Cray,2070.0,46.486979,7.100381,,,,,,,f,,f
-Malatraix,1768.0,46.394284,6.964194,,,,,,,f,,f
+,,,,Spring,Hike,,56.0,3j,3852.0,f,Proxima,f
+Planachaux,1925.0,46.444143,7.054783,Spring,Hike,,56.0,3j,3852.0,f,,f
+Monts Chevreuils,1749.0,46.434453,7.084135,Spring,Hike,,56.0,3j,3852.0,f,,f
+Pointe de Cray,2070.0,46.486979,7.100381,Spring,Hike,,56.0,3j,3852.0,f,,f
+Malatraix,1768.0,46.394284,6.964194,Spring,Hike,,56.0,3j,3852.0,f,,f
 ,,,,Summer,Hike,,8.5,2.7,1101.0,f,,f
 Rocher du Midi,2096.0,46.4438,7.153312,Spring,Hike,,11.1,5,1202.0,f,,f
-Rellerligrat,1843.0,46.511325,7.263639,Spring,Hike,,28,9.5,1750.0,f,,f
-Hugeligrat,1898.0,46.519712,7.265653,,,,,,,f,,f
-Schneitgrat,1961.0,,,,,,,,,f,,f
-Col de la Forcla,1660.0,46.526894,7.222768,,,,,,,f,,f
-Pertet à Bovey,1794.0,,,,,,,,,f,,f
-Wolfs Ort,1915.0,,,Spring,Hike,,16.5,2j,1300.0,f,,f
-Wandflue,2134.0,,,,,,,,,f,,f
-Gratflue,1936.0,,,,,,,,,f,,f
-Grand Chavalard,2899.0,,,,,,,,,,,
-Dent du Bourgo,1908.0,,,Autumn,Hike,,11.7,3.5,799.0,f,,f
-Dent du Chamois,1839.0,,,Summer,Hike,,12.2,3.5,1046.0,f,,f
-Dent de Broc,1829.0,,,,,,,,,f,,f
-Crête de Chaux Commun,2122.0,,,Winter,Ski,,11.6,5.5,1162.0,f,,f
-Lac de Salanfe / Col du Jorat,2212.0,,,Summer,Trail running,,15.5,2.2,941.0,f,,f
+Rellerligrat,1843.0,46.511325,7.263639,Spring,Hike,,28.0,9.5,1750.0,f,,f
+Hugeligrat,1898.0,46.519712,7.265653,Spring,Hike,,28.0,9.5,1750.0,f,,f
+Schneitgrat,1961.0,,,Spring,Hike,,28.0,9.5,1750.0,f,,f
+Col de la Forcla,1660.0,46.526894,7.222768,Spring,Hike,,28.0,9.5,1750.0,f,,f
+Pertet à Bovey,1794.0,46.535182,7.210872,Spring,Hike,,28.0,9.5,1750.0,f,,f
+Wolfs Ort,1915.0,46.567202,7.263634,Spring,Hike,,16.5,2j,1300.0,f,,f
+Wandflue,2134.0,46.563427,7.259731,Spring,Hike,,16.5,2j,1300.0,f,,f
+Gratflue,1936.0,46.588627,7.284783,Spring,Hike,,16.5,2j,1300.0,f,,f
+Grand Chavalard,2899.0,46.178689,7.113116,,,,,,,,,
+Dent du Bourgo,1908.0,46.575584,7.139689,Autumn,Hike,,11.7,3.5,799.0,f,,f
+Dent du Chamois,1839.0,46.584456,7.130116,Summer,Hike,,12.2,3.5,1046.0,f,,f
+Dent de Broc,1829.0,46.588574,7.12778,Summer,Hike,,12.2,3.5,1046.0,f,,f
+Crête de Chaux Commun,2110.0,46.228891,7.072837,Winter,Ski,,11.6,5.5,1162.0,f,,f
+Lac de Salanfe / Col du Jorat,2212.0,46.150301,6.985478,Summer,Trail running,,15.5,2.2,941.0,f,,f
 "Haute Cime 
-(Dents du Midi)",3258.0,,,,,,,,,,,
-Tour Sallière,3220.0,,,Été ,Hike,T6/PD,22.6,8,1580.0,f,,f
+(Dents du Midi)",3258.0,46.161059,6.922985,,,,,,,,,
+Tour Sallière,3220.0,46.126953,6.924723,Été ,Hike,T6/PD,22.6,8,1580.0,f,,f
 Pic de Tenneverge,2989.0,46.0941472,6.8793647,Été ,Hike,T5/PD-,20.1,5.6,1513.0,f,,f
-Bel oiseau,2631.0,45.9033635,5.1790411,Été,Hike ,,9.7,4,742.0,f,,f
-Aiguilles du Van,2578.0,,,Été,Mountaineering,AD,,,800.0,f,,f
-Grand Perron,2673.0,46.0581517,6.9158193,,,,,,,f,,f
-Perrons de Vallorcine,2674.0,,,,,,,,,f,,f
-Pointe de Vouilloz,2672.0,46.0555064,6.9141059,,,,,,,f,,f
-Pointe de l'Ifala,2651.0,46.0541001,6.9110259,,,,,,,f,,f
-Üssers Barrhorn,3610.0,,,,,,,,,,,
-Geltenhorn,3065.0,,,,,,,,,,,
-Arpelistock,3035.0,,,,,,,,,,,
-Wildhorn,3250.0,,,,,,,,,,,
-Le Pleureur,3704.0,,,,,,,,,,,
-Haute Corde,2325.0,,,Autumn,Hike,,20.1,6.5,1900.0,f,,f
-Sex des branlettes,2621.0,,,,,,,,,f,,f
-Gros Sex ,2418.0,,,,,,,,,f,,f
-Dent de Valerette,2058.0,,,Winter,Ski,,,,,f,,f
-La tête à Josué,2131.0,,,Winter,Ski,,11.1,3.3,1028.0,f,,f
-Pic de Chaussy,2351.0,,,Winter,Ski,,8.6,2.5,774.0,f,,f
-Le folly,1730.0,46.1013094,6.7750031,Winter,Ski,,7.7,2.5,768.0,f,,f
-Pointe de Chemo,2626.0,,,Winter,Ski,,11,2.9,1144.0,f,,f
-Les Louèrettes,3068.0,,,Winter,Ski,,9.6,6.3,1531.0,f,,f
-Six Blanc (Orsière),2445.0,,,Winter,Ski,,11.5,3,981.0,f,,f
-La dotse,2492.0,,,Winter,Ski,,16,4,1396.0,f,,f
-Tête de Ferret,2714.0,,,,,,,,,f,,f
-Aiguille des Angroniettes,2943.0,,,Winter,Ski,,18,,1700.0,f,,f
-Pointe de Combette,2761.0,,,,,,,,,f,,f
-Six Blanc (Val Ferret),2795.0,,,Winter,Ski,,2023-03-15 00:00:00,6,1140.0,f,,f
-Mont Telliers,2951.0,,,Winter,Ski,,1900-01-11 00:00:00,3,960.0,,,
-Dent du Grand Lé,2884.0,43.7749753,6.2427655,Winter,Ski,,2025-05-08 00:00:00,2,890.0,,,
-Mont Vélan,3727.0,,,Winter,Ski,,2025-08-12 00:00:00,4,1750.0,,,
-Pointe de Penne,2781.0,,,Winter,Ski,,,,,,,
-Le Beaufort,3048.0,45.4144422,3.770435,,,,,,,,,
-Bonhomme du Tsapi,2802.0,,,,,,,,,,,
-Pointe de la Tsevalire,3026.0,,,Winter,Ski,,20,8,1800.0,f,,f
-La Luette,3548.0,,,Winter,Ski,,17.8,10.8,1311.0,f,,f
-Pointe de la Vouasson,3490.0,,,Winter,Ski,,14.3,5,1650.0,f,,f
-Palantse de la Cretta,2929.0,,,,,,,,,,,
-Mont Blanc de Cheilon,3870.0,,,Winter,Ski,,,,,,,
-Combin de Boveire,3663.0,,,,Ski,,,,,,,
-Petit Combin,3672.0,,,,,,,,,,,
-Grand combin,4314.0,,,,Ski,D/S4,,,,,4000,
-Castor,4228.0,43.5278295,5.4174187,,,,,,,,4000,
-Pollux,4092.0,43.3025928,5.3901012,,,,,,,,4000,
-Pointe Dufour,4634.0,,,,Ski,,,,,,4000,
-Matterhorn,4478.0,,,,,,,,,,4000,
-Ober Gabelhorn,4063.0,,,,Mountaineering,D-,,,,,4000,
-Lenzspitze,4294.0,,,,Ski,,,,,,4000,
+Bel oiseau,2631.0,46.078867,6.936941,Été,Hike ,,9.7,4,742.0,f,,f
+Aiguille du Van,2578.0,46.059465,6.918862,Été,Mountaineering,AD,,,800.0,f,,f
+Grand Perron,2673.0,46.0581517,6.9158193,Été,Mountaineering,AD,,,800.0,f,,f
+Pain de Sucre,2646.0,46.05471,6.913156,Été,Mountaineering,AD,,,800.0,f,,f
+Pointe de Vouilloz,2672.0,46.0555064,6.9141059,Été,Mountaineering,AD,,,800.0,f,,f
+Pointe de l'Ifala,2651.0,46.0541001,6.9110259,Été,Mountaineering,AD,,,800.0,f,,f
+Üssers Barrhorn,3610.0,46.155913,7.73409,,,,,,,,,
+Geltenhorn,3065.0,46.34633,7.334613,,,,,,,,,
+Arpelistock,3036.0,46.34388,7.315242,,,,,,,,,
+Wildhorn,3248.0,46.35594,7.362221,,,,,,,,,
+Le Pleureur,3703.0,46.016289,7.369109,,,,,,,,,
+La Haute Corde,2325.0,46.27708,7.144991,Autumn,Hike,,20.1,6.5,1900.0,f,,f
+Sex des branlettes,2620.0,46.262477,7.155318,Autumn,Hike,,20.1,6.5,1900.0,f,,f
+Gros Sex ,2418.0,46.257798,7.145759,Autumn,Hike,,20.1,6.5,1900.0,f,,f
+Dent de Valerette,2058.0,46.207373,6.952334,Winter,Ski,,,,,f,,f
+La tête à Josué,2131.0,46.404576,7.169188,Winter,Ski,,11.1,3.3,1028.0,f,,f
+Pic de Chaussy,2351.0,46.377058,7.112749,Winter,Ski,,8.6,2.5,774.0,f,,f
+Le folly,1730.0,46.47997,6.95161,Winter,Ski,,7.7,2.5,768.0,f,,f
+Pointe de Chemo,2626.0,46.223548,7.146005,Winter,Ski,,11.0,2.9,1144.0,f,,f
+Les Louèrettes,3068.0,46.115301,7.355588,Winter,Ski,,9.6,6.3,1531.0,f,,f
+Six Blanc (Orsière),2445.0,46.037486,7.185187,Winter,Ski,,11.5,3,981.0,f,,f
+La dotse,2492.0,45.899331,7.102017,Winter,Ski,,16.0,4,1396.0,f,,f
+Tête de Ferret,2714.0,45.895189,7.07655,Winter,Ski,,16.0,4,1396.0,f,,f
+Aiguille des Angroniettes,2943.0,45.871294,7.09374,Winter,Ski,,18.0,,1700.0,f,,f
+Pointe de Combette,2761.0,45.875878,7.095419,Winter,Ski,,18.0,,1700.0,f,,f
+Six Blanc (Val Ferret),2795.0,45.880167,7.107371,Winter,Ski,,15.3,6,1140.0,f,,f
+Mont Telliers,2951.0,45.898323,7.145303,Winter,Ski,,10.1,3,960.0,,,
+Dents du Grand Lé,2884.0,45.901005,7.157971,Winter,Ski,,8.5,2,890.0,,,
+Mont Vélan,3727.0,45.891937,7.25147,Winter,Ski,,12.8,4,1750.0,,,
+Pointe de Penne,2782.0,45.945136,7.238284,Winter,Ski,,,,,,,
+Le Beaufort,3048.0,45.945835,7.248436,,,,,,,,,
+Bonhomme du Tsapi,2803.0,45.963328,7.233757,,,,,,,,,
+Pointe de la Tsevalire,3026.0,46.162397,7.508624,Winter,Ski,,20.0,8,1800.0,f,,f
+La Luette,3548.0,46.01041,7.387562,Winter,Ski,,17.8,10.8,1311.0,f,,f
+Pointe de Vouasson,3490.0,46.071502,7.42543,Winter,Ski,,14.3,5,1650.0,f,,f
+Palanche de la Cretta,2926.0,46.094244,7.464523,,,,,,,,,
+Mont Blanc de Cheilon,3870.0,45.993573,7.417228,Winter,Ski,,,,,,,
+Combin de Boveire,3663.0,45.964904,7.270739,,Ski,,,,,,,
+Petit Combin,3663.0,45.983848,7.267721,,,,,,,,,
+Grand combin,4314.0,45.937578,7.299224,,Ski,D/S4,,,,,4000,
+Castor,4228.0,45.920858,7.793271,,,,,,,,4000,
+Pollux,4092.0,45.927814,7.78531,,,,,,,,4000,
+Pointe Dufour,4634.0,45.936917,7.866747,,Ski,,,,,,4000,
+Matterhorn,4478.0,45.976428,7.6586,,,,,,,,4000,
+Ober Gabelhorn,4073.0,46.038603,7.668038,,Mountaineering,D-,,,,,4000,
+Lenzspitze,4294.0,46.104553,7.868654,,Ski,,,,,,4000,
 Mont Blanc ,4809.0,45.8327056,6.8651706,Winter,Ski,,,,,,4000,
 Mont Blanc du Tacul,4248.0,45.8565863,6.8885201,,,,,,,,4000,
 Mont Maudit,4465.0,45.8474391,6.8759863,,,,,,,,4000,
 Pointe de la Sambuy,2198.0,45.6916202,6.2654422,Summer,Hike,,11.6,3.7,1267.0,f,Bauges,f
-Pointe Chaurionde,2173.0,45.6838204,6.2582775,,,,2,0.9,335.0,f,Bauges,f
-Pointe d'Arcalod,2217.0,45.9169837,6.136288,,,,11.2,3,501.0,f,Bauges,f
+Pointe Chaurionde,2173.0,45.6838204,6.2582775,,,,2.0,0.9,335.0,f,Bauges,f
+Arcalod,2217.0,45.9169837,6.136288,,,,11.2,3,501.0,f,Bauges,f
 Tré le Mollard,2035.0,45.6683251,6.2234354,Été ,Rando/trail,,15.9,3,1342.0,f,Bauges,f
-Mont de la Coche,2070.0,45.6669803,6.2254742,,,,,,,f,Bauges,f
-Mont Pecloz,2197.0,45.6317663,6.229747,Été ,Rando/trail,,22.3,2 jours,2400.0,f,Bauges,f
-Mont d'Armenaz,2158.0,45.6279804,6.237497,,,,,,,f,Bauges,f
-Pointe des Arces,2076.0,45.6148716,6.2252196,,,,,,,f,Bauges,f
-Pointe des Arlicots,2060.0,45.607263,6.2065158,,,,,,,f,Bauges,f
-Grand Parra,2063.0,45.6035387,6.1992417,,,,,,,f,Bauges,f
-Dent d'Arclusaz,2041.0,45.6006674,6.1736822,,,,,,,f,Bauges,f
+Mont de la Coche,2070.0,45.6669803,6.2254742,Été ,Rando/trail,,15.9,3,1342.0,f,Bauges,f
+Mont Pecloz,2197.0,45.6317663,6.229747,Été ,Rando/trail,,22.3,2j,2400.0,f,Bauges,f
+Mont d'Armenaz,2158.0,45.6279804,6.237497,Été ,Rando/trail,,22.3,2j,2400.0,f,Bauges,f
+Pointe des Arces,2076.0,45.6148716,6.2252196,Été ,Rando/trail,,22.3,2j,2400.0,f,Bauges,f
+Pointe des Arlicots,2060.0,45.607263,6.2065158,Été ,Rando/trail,,22.3,2j,2400.0,f,Bauges,f
+Grand Parra,2063.0,45.6035387,6.1992417,Été ,Rando/trail,,22.3,2j,2400.0,f,Bauges,f
+Dent d'Arclusaz,2041.0,45.6006674,6.1736822,Été ,Rando/trail,,22.3,2j,2400.0,f,Bauges,f
 Mont Trelod,2181.0,45.6927213,6.196179,Summer,Hike,,19.9,5.3,1477.0,f,Bauges,f
 Dent de Cons,2063.0,45.7296285,6.3512686,Été ,Hike,,6.7,1.8,813.0,f,Bauges,f
 Mont Colombier,2043.0,45.6444835,6.1194771,Été ,Hike,,10.4,2.8,1119.0,f,Bauges,f
 Mont Veyrier,1291.0,45.9006184,6.1826234,Winter,Hike,,8.7,2.8,758.0,f,Annecy,f
 ,,,,Summer,Trail Running,,20.6,4.9,1839.0,f,Annecy,f
-Mont Baret,1243.0,45.054057,5.3560819,,,,,,,f,Annecy,f
-Mont Baron,1291.0,45.896916,6.1859291,,,,,,,f,Annecy,f
+Mont Baret,1243.0,45.887249,6.196549,Summer,Trail Running,,20.6,4.9,1839.0,f,Annecy,f
+Mont Baron,1291.0,45.896916,6.1859291,Summer,Trail Running,,20.6,4.9,1839.0,f,Annecy,f
 Dents de lanfon,1828.0,45.8612796,6.2418396,,,,,,,,Annecy,
 Col des Frêtes,1584.0,45.8526842,6.2511638,Summer,Hike,,7.2,3.5,968.0,f,Annecy,f
 Pointe de Talamarche,1852.0,45.8598069,6.2573406,,,,11.3,4.5,650.0,f,Annecy,f
 Lanfonnet,1768.0,45.847008,6.2553582,Winter,Hike,,15.6,4.6,882.0,f,Annecy,f
-La Tournette,2351.0,44.3685529,4.6421492,Summer,Trail running,,27.7,1j,1630.0,f,Annecy,f
+Tournette,2351.0,45.827088,6.286145,Summer,Trail running,,27.7,1j,1630.0,f,Annecy,f
 Charbon,1932.0,45.7479984,6.2048296,Autumn,Hike,,15.2,3.4,1194.0,f,Annecy,f
 Pointe de Banc plat,1907.0,45.7300617,6.1950482,été,Hike,,20.1,5.2,1430.0,f,Annecy,f
 Roc des Boeufs,1775.0,45.755054,6.1662197,Summer,Hike,,11.2,3.5,884.0,f,Annecy,f
-Tailfer,,,,Winter,Trail Running,,9.1,1.2,477.0,f,Annecy,f
+Crêt du Bourg,765.0,45.814899,6.199995,Winter,Trail Running,,9.1,1.2,477.0,f,Annecy,f
 Montagne d'Entrevernes,1338.0,45.7996561,6.1798294,été,Trail Running,,13.4,3,900.0,f,Annecy,f
-Semnoz,1699.0,45.7976609,6.1071615,Summer,Bike,,77,2025-05-03 00:00:00,1466.0,f,Annecy,f
+Semnoz,1699.0,45.7976609,6.1071615,Summer,Bike,,77.0,3.5,1466.0,f,Annecy,f
 Mont Charvin,2409.0,45.8024321,6.420147,été,Hike,,10.5,3.2,1100.0,f,Aravis,f
-La Gouenne,2174.0,45.776186,5.7191069,,,,,,,,Aravis,
+La Goenne,2174.0,45.810819,6.425607,,,,,,,,Aravis,
 Tête de l'Aulp,2129.0,45.8205315,6.4307379,,,,,,,,Aravis,
-Pointe de la Mandallaz,2277.0,,,,,,,,,,Aravis,
+Pointe de la Mandallaz,2277.0,45.831442,6.44405,,,,,,,,Aravis,
 L'Etale,2483.0,45.8497117,6.4473421,,,,,,,,Aravis,
 Pointe de Blonnière,2369.0,45.8582431,6.4530857,,,,,,,,Aravis,
 La Grande Torchère,2521.0,45.8940052,6.4936217,,,,,,,,Aravis,
-La Rouelle,2589.0,45.9007963,6.5025862,,,,,,,,Aravis,
+La Roualle,2589.0,45.9007963,6.5025862,,,,,,,,Aravis,
 Tête Pelouse,2537.0,45.9092579,6.5094535,,,,,,,,Aravis,
 Trou de la Mouche,2453.0,45.9158613,6.5125929,Winter,Ski,,9.8,5.2,1054.0,f,Aravis,f
 Tête de Paccaly,2466.0,45.919117,6.5197888,,,,,,,,Aravis,
-L'Abrevetta,2463.0,,,Winter,Ski,,11.5,5,1139.0,f,Aravis,f
+L'Ambrevetta,2463.0,45.92459,6.530977,Winter,Ski,,11.5,5,1139.0,f,Aravis,f
 Tardevant,2501.0,45.9265806,6.5261161,,,,,,,,Aravis,
-La Mamul,2404.0,,,,,,,,,,Aravis,
+La Mamule,2404.0,45.936464,6.528007,,,,,,,,Aravis,
 Mont Charvet,2538.0,45.9424665,6.5387015,,,,,,,,Aravis,
 Pointe Percée,2750.0,45.9557596,6.5559471,Summer,Hike,,13.7,5.5,1530.0,f,Aravis,f
-Refuge du Gramusset,2164.0,,,Winter,Ski,,15.8,"1,5 jours",1890.0,f,,f
-Col des Verts,2499.0,45.9516369,6.5549256,,,,,,,f,,f
-Pointe de la Carmélite,2477.0,45.9615911,6.5590119,,,,,,,f,,f
+Refuge de Gramusset,2164.0,45.955322,6.544481,Winter,Ski,,15.8,"1,5 jours",1890.0,f,,f
+Col des Verts,2499.0,45.9516369,6.5549256,Winter,Ski,,15.8,"1,5 jours",1890.0,f,,f
+Pointe de la Carmélite,2477.0,45.9615911,6.5590119,Winter,Ski,,15.8,"1,5 jours",1890.0,f,,f
 Lac glaciaire du Grand Méan,2855.0,45.3632865,7.1328047,,,,,,,,,
 Le Môle,1853.0,46.1065823,6.4548201,Summer,Hike,,7.9,2.5,660.0,f,,f
 Pointe d'Andey,1845.0,46.0428713,6.4180282,Winter,Ski,,7.9,2,834.0,f,,f
-Le Toboggan (Valmorel),1922.0,,,Winter,Ski,,5.7,2,634.0,f,,f
+Le Toboggan (Valmorel),1922.0,45.449589,6.424995,Winter,Ski,,5.7,2,634.0,f,,f
 Mont Thabor,3178.0,45.114076,6.5637534,Winter,Ski,,50.3,4 jours,3030.0,f,,f
 Aiguillette des Posettes,2201.0,46.0181246,6.9402515,Winter,Ski,,14.2,4,1130.0,f,,f
-Tête de Balme,2321.0,46.0307486,6.9625084,,,,,,,f,,f
+Tête de Balme,2321.0,46.0307486,6.9625084,Winter,Ski,,14.2,4,1130.0,f,,f
