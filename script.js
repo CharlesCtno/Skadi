@@ -38,6 +38,7 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
             return response.json();
         })
         .then(data => {
+            // Original track layer
             const track = L.geoJSON(data, {
                 style: { color: color, weight: 3 },
                 onEachFeature: function(feature, layer) {
@@ -53,19 +54,53 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
 
                     // Add click event to bring the track to the front
                     layer.on('click', function(e) {
-                        layer.bringToFront(); // Bring the clicked layer to the front
-                        layer.setStyle({ weight: 6 }); // Increase weight to highlight
+                        track.bringToFront();
+                        layer.setStyle({ weight: 6 });
                     });
 
                     // Reset style when popup is closed
                     layer.on('popupclose', function(e) {
-                        layer.setStyle({ weight: 3 }); // Reset weight
+                        layer.setStyle({ weight: 3 });
+                    });
+                }
+            }).addTo(map);
+
+            // Invisible layer for better clickability
+            const invisibleTrack = L.geoJSON(data, {
+                style: { color: 'transparent', weight: 15, opacity: 0 },
+                interactive: true,
+                onEachFeature: function(feature, layer) {
+                    // Bind the same popup as the original track
+                    layer.bindPopup(`
+                        <b>${gpxName}</b><br>
+                        <b>Season:</b> ${season}<br>
+                        <b>Type:</b> ${type}<br>
+                        <b>Grade:</b> ${grade}<br>
+                        <b>Distance:</b> ${distance} km<br>
+                        <b>Duration:</b> ${duration}<br>
+                        <b>Elevation Gain:</b> ${elevationGain} m
+                    `);
+
+                    // Add click event to bring the track to the front
+                    layer.on('click', function(e) {
+                        track.bringToFront();
+                        track.eachLayer(function(trackLayer) {
+                            trackLayer.setStyle({ weight: 6 });
+                        });
+                    });
+
+                    // Reset style when popup is closed
+                    layer.on('popupclose', function(e) {
+                        track.eachLayer(function(trackLayer) {
+                            trackLayer.setStyle({ weight: 3 });
+                        });
                     });
                 }
             }).addTo(map);
 
             tracks.push({
                 layer: track,
+                invisibleLayer: invisibleTrack,
                 type: type,
                 status: 'completed',
                 season: season

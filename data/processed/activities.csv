@@ -51,11 +51,11 @@ Grande Dent de Morcles,2969.0,46.199331,7.075533,Summer,Hike,T4,14.7,5.3,1379.0,
 ,,,,Winter,Ski,,26.0,2 days,2354.0,Grande_Dent_de_Morcles_Ski,Proxima,Grande Dent de Morcles Ski
 Petite Dent de Morcles,2229.0,46.201013,7.07125,,Climbing,TD+,,,,,Proxima,
 Pointe d'Aveneyre,2026.0,46.417371,7.004779,Autumn,Hike,,8.9,2.6,746.0,Pointe_d_Aveneyre,Proxima,Pointe d Aveneyre
-,,,,Spring,Hike,,56.0,3 days,3852.0,???,Proxima,???
-Planachaux,1925.0,46.444143,7.054783,Spring,Hike,,56.0,3 days,3852.0,,,
-Monts Chevreuils,1749.0,46.434453,7.084135,Spring,Hike,,56.0,3 days,3852.0,,,
-Pointe de Cray,2070.0,46.486979,7.100381,Spring,Hike,,56.0,3 days,3852.0,,,
-Malatraix,1768.0,46.394284,6.964194,Spring,Hike,,56.0,3 days,3852.0,,,
+,,,,Spring,Hike,,56.0,3 days,3852.0,De_Villeneuve_à_Château-d'Oex,Proxima,De Villeneuve à Château-d'Oex
+Planachaux,1925.0,46.444143,7.054783,Spring,Hike,,56.0,3 days,3852.0,De_Villeneuve_à_Château-d'Oex,,De Villeneuve à Château-d'Oex
+Monts Chevreuils,1749.0,46.434453,7.084135,Spring,Hike,,56.0,3 days,3852.0,De_Villeneuve_à_Château-d'Oex,,De Villeneuve à Château-d'Oex
+Pointe de Cray,2070.0,46.486979,7.100381,Spring,Hike,,56.0,3 days,3852.0,De_Villeneuve_à_Château-d'Oex,,De Villeneuve à Château-d'Oex
+Malatraix,1768.0,46.394284,6.964194,Spring,Hike,,56.0,3 days,3852.0,De_Villeneuve_à_Château-d'Oex,,De Villeneuve à Château-d'Oex
 ,,,,Summer,Hike,,8.5,2.7,1101.0,Malatraix,,Malatraix
 Rocher du Midi,2096.0,46.4438,7.153312,Spring,Hike,,11.1,5,1202.0,Rocher_du_Midi,,Rocher du Midi
 Rellerligrat,1843.0,46.511325,7.263639,Spring,Hike,,28.0,9.5,1750.0,Gastlosen_Saanen,,Gastlosen Saanen
@@ -63,9 +63,9 @@ Hugeligrat,1898.0,46.519712,7.265653,Spring,Hike,,28.0,9.5,1750.0,Gastlosen_Saan
 Schneitgrat,1961.0,,,Spring,Hike,,28.0,9.5,1750.0,Gastlosen_Saanen,,Gastlosen Saanen
 Col de la Forcla,1660.0,46.526894,7.222768,Spring,Hike,,28.0,9.5,1750.0,Gastlosen_Saanen,,Gastlosen Saanen
 Pertet à Bovey,1794.0,46.535182,7.210872,Spring,Hike,,28.0,9.5,1750.0,Gastlosen_Saanen,,Gastlosen Saanen
-Wolfs Ort,1915.0,46.567202,7.263634,Spring,Hike,,16.5,2 days,1300.0,???,,???
-Wandflue,2134.0,46.563427,7.259731,Spring,Hike,,16.5,2 days,1300.0,,,
-Gratflue,1936.0,46.588627,7.284783,Spring,Hike,,16.5,2 days,1300.0,,,
+Wolfs Ort,1915.0,46.567202,7.263634,Spring,Hike,,16.5,2 days,1300.0,North_Gastlosen,,North Gastlosen
+Wandflue,2134.0,46.563427,7.259731,Spring,Hike,,16.5,2 days,1300.0,North_Gastlosen,,North Gastlosen
+Gratflue,1936.0,46.588627,7.284783,Spring,Hike,,16.5,2 days,1300.0,North_Gastlosen,,North Gastlosen
 Grand Chavalard,2899.0,46.178689,7.113116,,,,,,,,,
 Dent du Bourgo,1908.0,46.575584,7.139689,Autumn,Hike,,11.7,3.5,799.0,Dent_de_Bourgo,,Dent de Bourgo
 Dent du Chamois,1839.0,46.584456,7.130116,Summer,Hike,,12.2,3.5,1046.0,Dent_du_Chamois_Dent_de_Broc,,Dent du Chamois Dent de Broc
@@ -95,7 +95,7 @@ La tête à Josué,2131.0,46.404576,7.169188,Winter,Ski,,11.1,3.3,1028.0,La_Têt
 Pic de Chaussy,2351.0,46.377058,7.112749,Winter,Ski,,8.6,2.5,774.0,Pic_Chaussy,,Pic Chaussy
 Le folly,1730.0,46.47997,6.95161,Winter,Ski,,7.7,2.5,768.0,Folly,,Folly
 Pointe de Chemo,2626.0,46.223548,7.146005,Winter,Ski,,11.0,2.9,1144.0,Pointe_de_chemo,,Pointe de chemo
-Les Louèrettes,3068.0,46.115301,7.355588,Winter,Ski,,9.6,6.3,1531.0,Les_Louèrettes,,Les Louèrettes
+Les Louèrettes,3068.0,46.115301,7.355588,Winter,Ski,,9.6,6.3,1531.0,Les_Louerettes,,Les Louerettes
 Six Blanc (Orsière),2445.0,46.037486,7.185187,Winter,Ski,,11.5,3,981.0,Six_Blanc(Orsière),,Six Blanc(Orsière)
 La dotse,2492.0,45.899331,7.102017,Winter,Ski,,16.0,4,1396.0,Dotse_et_Tête_de_Ferret,,Dotse et Tête de Ferret
 Tête de Ferret,2714.0,45.895189,7.07655,Winter,Ski,,16.0,4,1396.0,Dotse_et_Tête_de_Ferret,,Dotse et Tête de Ferret
@@ -170,9 +170,9 @@ Tardevant,2501.0,45.9265806,6.5261161,,,,,,,,Aravis,
 La Mamule,2404.0,45.936464,6.528007,,,,,,,,Aravis,
 Mont Charvet,2538.0,45.9424665,6.5387015,,,,,,,,Aravis,
 Pointe Percée,2750.0,45.9557596,6.5559471,Summer,Hike,,13.7,5.5,1530.0,Pointe_Percée,Aravis,Pointe Percée
-Refuge de Gramusset,2164.0,45.955322,6.544481,Winter,Ski,,15.8,"1,5 days",1890.0,Gramusset,,Gramusset
-Col des Verts,2499.0,45.9516369,6.5549256,Winter,Ski,,15.8,"1,5 days",1890.0,Gramusset,,Gramusset
-Pointe de la Carmélite,2477.0,45.9615911,6.5590119,Winter,Ski,,15.8,"1,5 days",1890.0,Gramusset,,Gramusset
+Refuge de Gramusset,2164.0,45.955322,6.544481,Winter,Ski,,15.8,2 days,1890.0,Gramusset,,Gramusset
+Col des Verts,2499.0,45.9516369,6.5549256,Winter,Ski,,15.8,2 days,1890.0,Gramusset,,Gramusset
+Pointe de la Carmélite,2477.0,45.9615911,6.5590119,Winter,Ski,,15.8,2 days,1890.0,Gramusset,,Gramusset
 Lac glaciaire du Grand Méan,2855.0,45.3632865,7.1328047,,,,,,,,,
 Le Môle,1853.0,46.1065823,6.4548201,Summer,Hike,,7.9,2.5,660.0,Le_Môle,,Le Môle
 Pointe d'Andey,1845.0,46.0428713,6.4180282,Winter,Ski,,7.9,2,834.0,Andey,,Andey
