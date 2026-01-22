@@ -7,7 +7,12 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 // Store markers and tracks for filtering
 let markers = [];
 let tracks = [];
-let loadedGeoJSONFiles = {}; // Object to keep track of loaded GeoJSON files
+let loadedGeoJSONFiles = {};
+
+// Store GPX names for search
+let gpxNames = [];
+let gpxNameToMarker = {}; // Map GPX names to markers
+let gpxNameToTrack = {};   // Map GPX names to tracks
 
 // Function to create a colored triangle icon with outline
 function createTriangleIcon(color, isCompleted) {
@@ -23,6 +28,34 @@ function createTriangleIcon(color, isCompleted) {
         iconAnchor: [10, 10]
     });
 }
+
+// Function to format duration, handling both hours and days
+function formatDuration(duration) {
+    if (typeof duration === 'string' && duration.includes('day')) {
+        return duration; // Return as is if it's in days format (e.g., "2 days")
+    }
+
+    const decimalHours = parseFloat(duration);
+    if (isNaN(decimalHours)) {
+        return "N/A";
+    }
+
+    const hours = Math.floor(decimalHours);
+    const minutes = Math.round((decimalHours - hours) * 60);
+    return minutes < 10 ? `${hours}h0${minutes}` : `${hours}h${minutes}`;
+}
+
+// Define colors for each project
+const projectColors = {
+    'Proxima': '#45818e',
+    'Annecy': '#3c78d8',
+    'Bauges': '#674ea7',
+    '4000': '#f1c232',
+    'Aravis': '#a64d79'
+};
+
+// Default color for activities without a project
+const defaultColor = '#808080';
 
 // Function to load GeoJSON files dynamically
 function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, elevationGain, gpxName) {
@@ -70,7 +103,6 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
                 style: { color: 'transparent', weight: 15, opacity: 0 },
                 interactive: true,
                 onEachFeature: function(feature, layer) {
-                    // Bind the same popup as the original track
                     layer.bindPopup(`
                         <b>${gpxName}</b><br>
                         <b>Season:</b> ${season}<br>
@@ -103,7 +135,10 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
                 invisibleLayer: invisibleTrack,
                 type: type,
                 status: 'completed',
-                season: season
+                season: season,
+                gpxName: gpxName,
+                coordinates: data.features[0].geometry.coordinates,
+                bounds: track.getBounds()
             });
 
             loadedGeoJSONFiles[gpxFile] = true; // Mark this file as loaded
@@ -113,35 +148,40 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
         });
 }
 
-// Function to format duration, handling both hours and days
-function formatDuration(duration) {
-    if (typeof duration === 'string' && duration.includes('day')) {
-        return duration; // Return as is if it's in days format (e.g., "2 days")
+// Function to focus on a GPX track
+function focusOnGPXName(gpxName) {
+    // Focus on the marker if it exists
+    for (const marker of markers) {
+        if (marker.name === gpxName) {
+            map.setView(marker.layer.getLatLng(), 12);
+            marker.layer.openPopup();
+        }
     }
 
-    const decimalHours = parseFloat(duration);
-    if (isNaN(decimalHours)) {
-        return "N/A";
-    }
+    // Highlight and zoom on the track if it exists
+    tracks.forEach(track => {
+        if (track.gpxName === gpxName) {
+            track.layer.bringToFront();
+            track.layer.eachLayer(function(layer) {
+                layer.setStyle({ weight: 6 });
 
-    const hours = Math.floor(decimalHours);
-    const minutes = Math.round((decimalHours - hours) * 60);
-    return minutes < 10 ? `${hours}h0${minutes}` : `${hours}h${minutes}`;
+                // Zoom to fit the track bounds with padding
+                if (track.bounds && track.bounds.isValid()) {
+                    map.fitBounds(track.bounds, { padding: [70, 70] });
+                }
+
+                // Open popup
+                layer.openPopup();
+            });
+        } else {
+            track.layer.eachLayer(function(layer) {
+                layer.setStyle({ weight: 3 });
+            });
+        }
+    });
 }
 
-// Define colors for each project
-const projectColors = {
-    'Proxima': '#45818e',
-    'Annecy': '#3c78d8',
-    'Bauges': '#674ea7',
-    '4000': '#f1c232',
-    'Aravis': '#a64d79'
-};
-
-// Default color for activities without a project
-const defaultColor = '#808080'; // Gray
-
-// Load summit data from CSV
+// Load summit data from CSV and store GPX names for search
 fetch("data/processed/activities.csv")
     .then(response => response.text())
     .then(csvText => {
@@ -158,6 +198,7 @@ fetch("data/processed/activities.csv")
             const gpxFile = columns[10] && columns[10].trim();
             const season = columns[4];
             const type = columns[5];
+            const gpxName = columns[12] ? columns[12].replace(/_/g, ' ') : '';
 
             if (summitLatitude && summitLongitude && !summits[name]) {
                 const isCompleted = !!gpxFile;
@@ -176,19 +217,26 @@ fetch("data/processed/activities.csv")
                     layer: marker,
                     type: type,
                     status: isCompleted ? 'completed' : 'to do',
-                    season: season
+                    season: season,
+                    name: name
                 });
+
+                if (gpxName) {
+                    if (!gpxNames.includes(gpxName)) {
+                        gpxNames.push(gpxName);
+                    }
+                    gpxNameToMarker[gpxName] = marker;
+                }
 
                 summits[name] = true;
             }
 
             // Load GeoJSON file if it exists
-            if (gpxFile) {
+            if (gpxFile && gpxName) {
                 const grade = columns[6];
                 const distance = columns[7];
                 const duration = columns[8];
                 const elevationGain = columns[9];
-                const gpxName = columns[12] && columns[12].replace(/_/g, ' ');
 
                 let trackColor;
                 if (type.toLowerCase().includes('ski')) {
@@ -209,6 +257,56 @@ fetch("data/processed/activities.csv")
     .catch(error => {
         console.error('Error loading CSV:', error);
     });
+
+// Function to handle search
+document.getElementById('search').addEventListener('input', function(e) {
+    const searchTerm = e.target.value.toLowerCase();
+    const resultsContainer = document.getElementById('search-results');
+
+    if (searchTerm.length === 0) {
+        resultsContainer.style.display = 'none';
+        return;
+    }
+
+    const matches = gpxNames.filter(gpxName => gpxName.toLowerCase().includes(searchTerm));
+
+    if (matches.length > 0) {
+        resultsContainer.innerHTML = '';
+        matches.forEach(match => {
+            const div = document.createElement('div');
+            div.textContent = match;
+            div.style.color = 'white'; // Ajout pour correspondre à ton style sombre
+            div.addEventListener('click', function() {
+                e.target.value = match;
+                resultsContainer.style.display = 'none';
+                focusOnGPXName(match);
+            });
+            resultsContainer.appendChild(div);
+        });
+        resultsContainer.style.display = 'block';
+    } else {
+        resultsContainer.style.display = 'none';
+    }
+});
+
+// Hide search results when clicking outside
+document.addEventListener('click', function(e) {
+    const searchContainer = document.getElementById('search');
+    const resultsContainer = document.getElementById('search-results');
+
+    if (e.target !== searchContainer) {
+        resultsContainer.style.display = 'none';
+    }
+});
+
+// Handle Enter key in search
+document.getElementById('search').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        const searchTerm = e.target.value;
+        focusOnGPXName(searchTerm);
+        document.getElementById('search-results').style.display = 'none';
+    }
+});
 
 // Function to apply filters
 function applyFilters() {
@@ -235,11 +333,59 @@ function applyFilters() {
 
         if (typeMatch && statusMatch && seasonMatch) {
             map.addLayer(track.layer);
+            map.addLayer(track.invisibleLayer);
         } else {
             map.removeLayer(track.layer);
+            map.removeLayer(track.invisibleLayer);
         }
     });
 }
 
 // Add event listener for the apply filters button
 document.getElementById('apply-filters').addEventListener('click', applyFilters);
+
+// Clear search input
+document.getElementById('clear-search').addEventListener('click', function() {
+    document.getElementById('search').value = '';
+    document.getElementById('search-results').style.display = 'none';
+    document.getElementById('search').focus();
+    document.getElementById('clear-search').style.display = 'none';
+});
+
+// Show/hide clear button
+document.getElementById('search').addEventListener('input', function(e) {
+    const searchTerm = e.target.value.toLowerCase();
+    const clearSearchButton = document.getElementById('clear-search');
+    const resultsContainer = document.getElementById('search-results');
+
+    if (searchTerm.length > 0) {
+        clearSearchButton.style.display = 'block';
+    } else {
+        clearSearchButton.style.display = 'none';
+        resultsContainer.style.display = 'none';
+    }
+
+    if (searchTerm.length === 0) {
+        return;
+    }
+
+    const matches = gpxNames.filter(gpxName => gpxName.toLowerCase().includes(searchTerm));
+
+    if (matches.length > 0) {
+        resultsContainer.innerHTML = '';
+        matches.forEach(match => {
+            const div = document.createElement('div');
+            div.textContent = match;
+            div.style.color = 'white';
+            div.addEventListener('click', function() {
+                e.target.value = match;
+                resultsContainer.style.display = 'none';
+                focusOnGPXName(match);
+            });
+            resultsContainer.appendChild(div);
+        });
+        resultsContainer.style.display = 'block';
+    } else {
+        resultsContainer.style.display = 'none';
+    }
+});

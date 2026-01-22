@@ -102,6 +102,37 @@
     .leaflet-control-zoom {
       display: none !important;
     }
+
+    #search {
+      padding: 5px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      width: 200px;
+    }
+
+    #search-results {
+      margin-top: 35px;
+    }
+
+    #search-results div {
+      padding: 8px;
+      cursor: pointer;
+    }
+
+    #search-results div:hover {
+      background-color: #66666680;
+    }
+
+    #clear-search {
+  color: #ccc;
+  font-size: 16px;
+  display: none;
+}
+
+#clear-search:hover {
+  color: white;
+}
+
   </style>
 </head>
 <body>
@@ -110,6 +141,16 @@
   </header>
   <div id="map"></div>
   <div id="filters">
+
+    <div class="filter-group">
+  <label for="search">Search:</label>
+  <div style="position: relative;">
+    <input type="text" id="search" placeholder="Search by GPX name..." autocomplete="off">
+    <span id="clear-search" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; display: none;">✕</span>
+  </div>
+  <div id="search-results" style="position: absolute; background: #333; border: 1px solid #ccc; max-height: 200px; overflow-y: auto; display: none; width: 200px; z-index: 1000;"></div>
+</div>
+
 
     <div class="filter-group">
       <label for="status">Status:</label>
