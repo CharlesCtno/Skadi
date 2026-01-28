@@ -22,9 +22,14 @@
     header {
       background-color: #333;
       color: white;
-      padding: 20px;
+      padding: 10px 20px; /* Adjusted padding */
       text-align: center;
       box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 80px; /* Fixed height for the header */
+      box-sizing: border-box; /* Include padding in the height */
     }
 
     header h1 {
@@ -33,10 +38,51 @@
       margin: 0;
       letter-spacing: 3px;
       text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+      line-height: 1; /* Ensure the text height doesn't affect vertical alignment */
+    }
+
+    #tabs {
+      display: flex;
+      background-color: #333;
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+
+    #tabs li {
+      flex: 1;
+      text-align: center;
+    }
+
+    #tabs li a {
+      display: block;
+      padding: 10px;
+      color: white;
+      text-decoration: none;
+      font-family: 'Bebas Neue', cursive;
+      font-size: 24px;
+      letter-spacing: 2px;
+    }
+
+    #tabs li a.active {
+      background-color: #444;
+      border-bottom: 2px solid #45818e;
+    }
+
+    #tab-content {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 130px);
+      position: relative;
+    }
+
+    #map {
+      flex: 1;
+      width: 100%;
     }
 
     #filters {
-      position: fixed;
+      position: absolute;
       bottom: 20px;
       right: 20px;
       z-index: 1000;
@@ -89,20 +135,6 @@
       background: #80c2d1;
     }
 
-    #map {
-      height: calc(100vh - 90px);
-      width: 100%;
-      margin-top: 0;
-      position: absolute;
-      top: 90px;
-      left: 0;
-    }
-
-    /* Hide Leaflet zoom controls */
-    .leaflet-control-zoom {
-      display: none !important;
-    }
-
     #search {
       padding: 5px;
       border-radius: 4px;
@@ -112,11 +144,14 @@
 
     #search-results {
       margin-top: 35px;
+      background: #333;
+      border: 1px solid #ccc;
     }
 
     #search-results div {
       padding: 8px;
       cursor: pointer;
+      color: white;
     }
 
     #search-results div:hover {
@@ -124,34 +159,42 @@
     }
 
     #clear-search {
-  color: #ccc;
-  font-size: 16px;
-  display: none;
-}
+      color: #ccc;
+      font-size: 16px;
+      display: none;
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+    }
 
-#clear-search:hover {
-  color: white;
-}
+    #clear-search:hover {
+      color: white;
+    }
 
+    /* Hide Leaflet zoom controls */
+    .leaflet-control-zoom {
+      display: none !important;
+    }
+
+    #filters-container.hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
   <header>
     <h1>Skaði</h1>
   </header>
-  <div id="map"></div>
+  <ul id="tabs">
+    <li><a href="#" class="active" data-tab="summits">Summits</a></li>
+    <li><a href="#" data-tab="bike">Bike</a></li>
+  </ul>
+  <div id="tab-content">
+    <div id="map"></div>
+    <div id="filters-container">
   <div id="filters">
-
-    <div class="filter-group">
-  <label for="search">Search:</label>
-  <div style="position: relative;">
-    <input type="text" id="search" placeholder="Search by GPX name..." autocomplete="off">
-    <span id="clear-search" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; display: none;">✕</span>
-  </div>
-  <div id="search-results" style="position: absolute; background: #333; border: 1px solid #ccc; max-height: 200px; overflow-y: auto; display: none; width: 200px; z-index: 1000;"></div>
-</div>
-
-
     <div class="filter-group">
       <label for="status">Status:</label>
       <select id="status">
@@ -179,10 +222,22 @@
         <option value="Ski">Ski</option>
         <option value="Hike">Hike</option>
         <option value="Mountaineering">Mountaineering</option>
+        <option value="Bike">Bike</option>
       </select>
     </div>
 
+    <div class="filter-group">
+      <label for="search">Search:</label>
+      <div style="position: relative;">
+        <input type="text" id="search" placeholder="Search by name..." autocomplete="off">
+        <span id="clear-search">✕</span>
+      </div>
+      <div id="search-results" style="position: absolute; background: #333; border: 1px solid #ccc; max-height: 200px; overflow-y: auto; display: none; width: 200px; z-index: 1000;"></div>
+    </div>
+
     <button id="apply-filters">Apply Filters</button>
+  </div>
+</div>
   </div>
 
   <!-- JavaScript -->

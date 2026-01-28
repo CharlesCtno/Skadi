@@ -33,5 +33,5 @@ def gpx_to_geojson(gpx_folder, output_folder):
 
             print(f"Converted: {gpx_file} → {output_path}")
 
-# Example usage
-gpx_to_geojson("data/raw/", "data/processed/")
+#gpx_to_geojson("data/raw/", "data/processed/")
+gpx_to_geojson("data/bike/raw/", "data/bike/processed/")

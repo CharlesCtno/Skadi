@@ -28,5 +28,5 @@ def excel_to_csv(input_excel, output_csv):
     df.to_csv(output_csv, index=False)
     print(f"Saved: {output_csv}")
 
-# Example usage
-excel_to_csv("data/raw/activities.xlsx", "data/processed/activities.csv")
+#excel_to_csv("data/raw/activities.xlsx", "data/processed/activities.csv")
+excel_to_csv("data/bike/raw/bike_activities.xlsx", "data/bike/processed/bike_activities.csv")
