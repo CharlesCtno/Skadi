@@ -1,4 +1,4 @@
-name: skadi_macos
+name: skadi
 channels:
   - conda-forge
   - defaults

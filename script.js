@@ -33,6 +33,10 @@ function createTriangleIcon(color, isCompleted) {
 
 // Function to format duration, handling both hours and days
 function formatDuration(duration) {
+    if (typeof duration === 'string') {
+        // Normalize comma decimals from Google Sheets exports, e.g., "5,3" -> "5.3"
+        duration = duration.replace(',', '.');
+    }
     if (typeof duration === 'string' && duration.includes('day')) {
         return duration;
     }
@@ -211,33 +215,82 @@ function loadData() {
     gpxNameToMarker = {};
     gpxNameToTrack = {};
 
-    // Determine the data path based on the current tab
-    const csvPath = currentTab === 'bike' ? 'data/bike/processed/bike_activities.csv' : 'data/processed/activities.csv';
-
+    // Determine the CSV path based on the current tab.
+    // For summits, use the cleaned CSV exported from the Google Sheet.
+    const csvPath =
+        currentTab === 'bike'
+            ? 'data/bike/processed/bike_activities.csv'
+            : 'data/processed/activities_clean.csv';
     fetch(csvPath)
         .then(response => response.text())
         .then(csvText => {
-            const rows = csvText.split('\n').slice(1); // Skip header row
+            // Local CSVs: first line is the header row, data starts at line 2.
+            const rows = csvText.split('\n').slice(1);
             const summits = {}; // Object to store unique summits
 
             rows.forEach(row => {
-                const columns = row.split(',');
-                const name = columns[0];
-                const altitude = parseInt(columns[1], 10) || 0; // Default to 0 if altitude is not available
-                const summitLatitude = columns[2];
-                const summitLongitude = columns[3];
-                const project = columns[11] || 'No Project';
-                const gpxFile = columns[10] && columns[10].trim();
-                const season = columns[4];
-                const type = columns[5];
-                const gpxName = columns[12] ? columns[12].replace(/_/g, ' ') : name; // Use name if GPXName is not available
+                // Skip completely empty lines
+                if (!row.trim()) {
+                    return;
+                }
 
-                if (summitLatitude && summitLongitude && !summits[name]) {
+                // Simple CSV split – cleaned files have no problematic commas.
+                const columns = row.split(',');
+
+                // Guard against malformed lines with too few columns
+                if (columns.length < 12) {
+                    console.warn('Skipping malformed CSV row (not enough columns):', row);
+                    return;
+                }
+                
+                const isBikeTab = currentTab === 'bike';
+
+                let name = columns[0] || '';
+                const altitudeRaw = columns[1] || '';
+                const summitLatitudeRaw = columns[2] || '';
+                const summitLongitudeRaw = columns[3] || '';
+                const season = columns[4] || '';
+                const type = columns[5] || '';
+                const grade = columns[6] || '';
+                const distance = columns[7] || '';
+                const duration = columns[8] || '';
+                const elevationGain = columns[9] || '';
+
+                const gpxFileRaw = columns[10] || '';
+                const gpxFile = gpxFileRaw ? gpxFileRaw.trim() : null;
+
+                const project = columns[11] || 'No Project';
+
+                // Derive a human-friendly GPX name.
+                // For bike CSVs, there is an explicit GPXName column at index 12; prefer that when present.
+                let gpxName = gpxFile ? gpxFile.replace(/_/g, ' ') : name;
+                if (isBikeTab && columns.length > 12 && columns[12]) {
+                    gpxName = columns[12];
+                    if (!name) {
+                        name = gpxName;
+                    }
+                }
+
+                // If there's no meaningful identifier at all, skip the row.
+                if (!name && !gpxFile && !gpxName) {
+                    return;
+                }
+
+                // Values are already cleaned by the export script, just parse as floats.
+                const altitude = parseFloat(altitudeRaw) || 0;
+                const summitLatitude = parseFloat(summitLatitudeRaw);
+                const summitLongitude = parseFloat(summitLongitudeRaw);
+
+                if (
+                    Number.isFinite(summitLatitude) &&
+                    Number.isFinite(summitLongitude) &&
+                    !summits[name]
+                ) {
                     const isCompleted = !!gpxFile;
                     const projectColor = projectColors[project] || defaultColor;
                     const summitIcon = createTriangleIcon(projectColor, isCompleted);
 
-                    const marker = L.marker([parseFloat(summitLatitude), parseFloat(summitLongitude)], { icon: summitIcon })
+                    const marker = L.marker([summitLatitude, summitLongitude], { icon: summitIcon })
                         .addTo(map)
                         .bindPopup(`
                             <b>${name} ${altitude ? `(${altitude}m)` : ''}</b><br>
@@ -265,34 +318,40 @@ function loadData() {
                 }
 
                 // Inside the loadData function, where you load GeoJSON files
-if (gpxFile && gpxName) {
-    const grade = columns[6];
-    const distance = columns[7];
-    const duration = columns[8];
-    const elevationGain = columns[9];
+                if (gpxFile && gpxName) {
+                    let trackColor;
+                    if (currentTab === 'bike') {
+                        // Use project color for bike tracks
+                        trackColor = projectColors[project] || '#32CD32'; // Default to lime green if project color is not defined
+                    } else {
+                        // Use type-based color for summit tracks
+                        if (type.toLowerCase().includes('ski')) {
+                            trackColor = '#46bdc6';
+                        } else if (type.toLowerCase().includes('hike')) {
+                            trackColor = '#ff6d01';
+                        } else if (type.toLowerCase().includes('mountaineering')) {
+                            trackColor = '#ea4335';
+                        } else if (type.toLowerCase().includes('bike')) {
+                            trackColor = '#fbbc04';
+                        } else {
+                            trackColor = defaultColor;
+                        }
+                    }
 
-    let trackColor;
-    if (currentTab === 'bike') {
-        // Use project color for bike tracks
-        trackColor = projectColors[project] || '#32CD32'; // Default to lime green if project color is not defined
-    } else {
-        // Use type-based color for summit tracks
-        if (type.toLowerCase().includes('ski')) {
-            trackColor = '#46bdc6';
-        } else if (type.toLowerCase().includes('hike')) {
-            trackColor = '#ff6d01';
-        } else if (type.toLowerCase().includes('mountaineering')) {
-            trackColor = '#ea4335';
-        } else if (type.toLowerCase().includes('bike')) {
-            trackColor = '#fbbc04';
-        } else {
-            trackColor = defaultColor;
-        }
-    }
-
-    const formattedDuration = formatDuration(duration);
-    loadGeoJSON(gpxFile, trackColor, season, type, grade, distance, formattedDuration, elevationGain, gpxName, currentTab);
-}
+                    const formattedDuration = formatDuration(duration);
+                    loadGeoJSON(
+                        gpxFile,
+                        trackColor,
+                        season,
+                        type,
+                        grade,
+                        distance,
+                        formattedDuration,
+                        elevationGain,
+                        gpxName,
+                        currentTab
+                    );
+                }
 
             });
         })
