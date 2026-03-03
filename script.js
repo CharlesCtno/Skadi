@@ -249,17 +249,17 @@ function loadData() {
                 const altitudeRaw = columns[1] || '';
                 const summitLatitudeRaw = columns[2] || '';
                 const summitLongitudeRaw = columns[3] || '';
-                const season = columns[4] || '';
-                const type = columns[5] || '';
-                const grade = columns[6] || '';
-                const distance = columns[7] || '';
-                const duration = columns[8] || '';
-                const elevationGain = columns[9] || '';
+                const season = (columns[4] || '').trim();
+                const type = (columns[5] || '').trim();
+                const grade = (columns[6] || '').trim();
+                const distance = (columns[7] || '').trim();
+                const duration = (columns[8] || '').trim();
+                const elevationGain = (columns[9] || '').trim();
 
-                const gpxFileRaw = columns[10] || '';
+                const gpxFileRaw = (columns[10] || '').trim();
                 const gpxFile = gpxFileRaw ? gpxFileRaw.trim() : null;
 
-                const project = columns[11] || 'No Project';
+                const project = (columns[11] || 'No Project').trim();
 
                 // Derive a human-friendly GPX name.
                 // For bike CSVs, there is an explicit GPXName column at index 12; prefer that when present.
