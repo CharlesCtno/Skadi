@@ -1,0 +1,23 @@
+name: skadi_macos
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pytorch
+  - torchvision
+  - torchaudio
+  - numpy
+  - pandas
+  - matplotlib
+  - scikit-learn
+  - jupyter
+  - ipykernel
+  - ipython
+  - ipywidgets
+  - beautifulsoup4
+  - requests
+  - openblas  # Replaces mkl for macOS/ARM64
+  - pip
+  - pip:
+    - gpxpy  # Install via pip if not available via conda
