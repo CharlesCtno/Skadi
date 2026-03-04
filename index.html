@@ -41,6 +41,24 @@
       line-height: 1; /* Ensure the text height doesn't affect vertical alignment */
     }
 
+    header {
+      gap: 20px;
+    }
+
+    #download-csv {
+      padding: 6px 12px;
+      font-size: 14px;
+      background: #45818e;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    #download-csv:hover {
+      background: #5a9aa8;
+    }
+
     #tabs {
       display: flex;
       background-color: #333;
@@ -186,6 +204,8 @@
 <body>
   <header>
     <h1>Skaði</h1>
+    <!-- Uncomment next line to show "Download CSV" for debugging (inspect exact data the site uses). -->
+    <!-- <button id="download-csv" type="button" title="Download the CSV used by this tab">Download CSV</button> -->
   </header>
   <ul id="tabs">
     <li><a href="#" class="active" data-tab="summits">Summits</a></li>

@@ -33,10 +33,6 @@ function createTriangleIcon(color, isCompleted) {
 
 // Function to format duration, handling both hours and days
 function formatDuration(duration) {
-    if (typeof duration === 'string') {
-        // Normalize comma decimals from Google Sheets exports, e.g., "5,3" -> "5.3"
-        duration = duration.replace(',', '.');
-    }
     if (typeof duration === 'string' && duration.includes('day')) {
         return duration;
     }
@@ -64,6 +60,12 @@ const projectColors = {
 
 // Default color for activities without a project
 const defaultColor = '#808080';
+
+function getCsvPath() {
+    return currentTab === 'bike'
+        ? 'https://docs.google.com/spreadsheets/d/e/2PACX-1vReJHYuqYbldPykQitSbHf--VtP6x1dq18OnmvGmajO6t-NzTtv6-uALyNzcipSZ5uRajKziZcZvS9N/pub?gid=2069199560&single=true&output=csv'
+        : 'data/processed/activities_clean.csv';
+}
 
 // Function to load GeoJSON files dynamically
 function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, elevationGain, gpxName, dataType) {
@@ -215,40 +217,32 @@ function loadData() {
     gpxNameToMarker = {};
     gpxNameToTrack = {};
 
-    // Determine the CSV path based on the current tab.
-    // For summits, use the cleaned CSV exported from the Google Sheet.
-    const csvPath =
-        currentTab === 'bike'
-            ? 'data/bike/processed/bike_activities.csv'
-            : 'data/processed/activities_clean.csv';
+    // Summits: cleaned local CSV. Bike: published Google Sheet.
+    const csvPath = getCsvPath();
     fetch(csvPath)
         .then(response => response.text())
         .then(csvText => {
-            // Local CSVs: first line is the header row, data starts at line 2.
+            // First line is header, data starts at line 2.
             const rows = csvText.split('\n').slice(1);
             const summits = {}; // Object to store unique summits
 
             rows.forEach(row => {
-                // Skip completely empty lines
                 if (!row.trim()) {
                     return;
                 }
 
-                // Simple CSV split – cleaned files have no problematic commas.
                 const columns = row.split(',');
-
-                // Guard against malformed lines with too few columns
                 if (columns.length < 12) {
                     console.warn('Skipping malformed CSV row (not enough columns):', row);
                     return;
                 }
-                
+
                 const isBikeTab = currentTab === 'bike';
 
-                let name = columns[0] || '';
-                const altitudeRaw = columns[1] || '';
-                const summitLatitudeRaw = columns[2] || '';
-                const summitLongitudeRaw = columns[3] || '';
+                let name = (columns[0] || '').trim();
+                const altitudeRaw = (columns[1] || '').trim();
+                const summitLatitudeRaw = (columns[2] || '').trim();
+                const summitLongitudeRaw = (columns[3] || '').trim();
                 const season = (columns[4] || '').trim();
                 const type = (columns[5] || '').trim();
                 const grade = (columns[6] || '').trim();
@@ -257,26 +251,18 @@ function loadData() {
                 const elevationGain = (columns[9] || '').trim();
 
                 const gpxFileRaw = (columns[10] || '').trim();
-                const gpxFile = gpxFileRaw ? gpxFileRaw.trim() : null;
-
                 const project = (columns[11] || 'No Project').trim();
+                const gpxFile = gpxFileRaw || null;
 
-                // Derive a human-friendly GPX name.
-                // For bike CSVs, there is an explicit GPXName column at index 12; prefer that when present.
-                let gpxName = gpxFile ? gpxFile.replace(/_/g, ' ') : name;
-                if (isBikeTab && columns.length > 12 && columns[12]) {
-                    gpxName = columns[12];
-                    if (!name) {
-                        name = gpxName;
-                    }
+                let gpxName = (gpxFile ? gpxFile.replace(/_/g, ' ') : name).trim();
+                if (isBikeTab && !name && gpxName) {
+                    name = gpxName;
                 }
 
-                // If there's no meaningful identifier at all, skip the row.
                 if (!name && !gpxFile && !gpxName) {
                     return;
                 }
 
-                // Values are already cleaned by the export script, just parse as floats.
                 const altitude = parseFloat(altitudeRaw) || 0;
                 const summitLatitude = parseFloat(summitLatitudeRaw);
                 const summitLongitude = parseFloat(summitLongitudeRaw);
@@ -485,6 +471,28 @@ document.querySelectorAll('#tabs a').forEach(tab => {
         }
     });
 });
+
+// Download CSV button (only active when the button is uncommented in index.html for debugging).
+const downloadCsvBtn = document.getElementById('download-csv');
+if (downloadCsvBtn) {
+    downloadCsvBtn.addEventListener('click', function() {
+        const csvPath = getCsvPath();
+        const filename = currentTab === 'bike' ? 'skadi_bike_website_data.csv' : 'skadi_summits_website_data.csv';
+        fetch(csvPath)
+            .then(function(response) { return response.text(); })
+            .then(function(csvText) {
+                const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(a.href);
+            })
+            .catch(function(err) {
+                console.error('Download CSV failed:', err);
+            });
+    });
+}
 
 // Initialize the app
 document.addEventListener('DOMContentLoaded', function() {
