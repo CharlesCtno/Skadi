@@ -2,6 +2,10 @@
 
 A static web app for visualizing mountain activities (hikes, ski, mountaineering, bike) on an interactive Leaflet map, using GeoJSON tracks and CSV activity lists.
 
+## Live Site
+
+[https://charlesctno.github.io/Skadi](https://charlesctno.github.io/Skadi)
+
 ## Stack
 
 - **Frontend:** Single-page HTML + vanilla JS (`index.html`, `script.js`), Leaflet map, no build step
