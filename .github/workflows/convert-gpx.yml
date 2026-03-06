@@ -1,0 +1,64 @@
+# Convert new or modified GPX files to GeoJSON and commit the results.
+# Triggers only when .gpx files under data/raw/ or data/bike/raw/ are pushed.
+name: Convert GPX to GeoJSON
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'data/raw/**/*.gpx'
+      - 'data/bike/raw/**/*.gpx'
+
+permissions:
+  contents: write
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install gpxpy
+        run: pip install gpxpy
+
+      - name: Get added/modified GPX files
+        id: gpx-files
+        run: |
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            # New branch or first push: consider all .gpx in the paths
+            FILES=$(find data/raw data/bike/raw -name '*.gpx' 2>/dev/null || true)
+          else
+            FILES=$(git diff --name-only --diff-filter=AM "$BEFORE" "$AFTER" -- data/raw/ data/bike/raw/ | grep '\.gpx$' || true)
+          fi
+          # Output as single line for passing to next step; skip empty
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Convert GPX to GeoJSON
+        if: steps.gpx-files.outputs.files != ''
+        run: |
+          for f in ${{ steps.gpx-files.outputs.files }}; do
+            [ -f "$f" ] && python scripts/convert_gpx.py "$f"
+          done
+
+      - name: Commit and push GeoJSON
+        if: steps.gpx-files.outputs.files != ''
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/processed/ data/bike/processed/
+          git diff --staged --quiet || {
+            git commit -m "chore: convert GPX to GeoJSON [automated]"
+            git push
+          }
