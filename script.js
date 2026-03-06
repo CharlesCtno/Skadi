@@ -70,10 +70,114 @@ function getTrackColorByType(type) {
     return defaultColor;
 }
 
+// Summits: published sheet (gid=0). Bike: published sheet (gid=2069199560).
+const SUMMITS_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vReJHYuqYbldPykQitSbHf--VtP6x1dq18OnmvGmajO6t-NzTtv6-uALyNzcipSZ5uRajKziZcZvS9N/pub?gid=0&single=true&output=csv';
+
 function getCsvPath() {
     return currentTab === 'bike'
         ? 'https://docs.google.com/spreadsheets/d/e/2PACX-1vReJHYuqYbldPykQitSbHf--VtP6x1dq18OnmvGmajO6t-NzTtv6-uALyNzcipSZ5uRajKziZcZvS9N/pub?gid=2069199560&single=true&output=csv'
-        : 'data/processed/activities_clean.csv';
+        : SUMMITS_SHEET_CSV_URL;
+}
+
+// Parse one CSV line (handles quoted fields and "" escape). Returns array of strings.
+function parseCsvLine(line) {
+    const out = [];
+    let i = 0;
+    while (i < line.length) {
+        if (line[i] === '"') {
+            i++;
+            let field = '';
+            while (i < line.length) {
+                if (line[i] === '"') {
+                    if (line[i + 1] === '"') { field += '"'; i += 2; }
+                    else { i++; break; }
+                } else { field += line[i]; i++; }
+            }
+            out.push(field);
+        } else {
+            let field = '';
+            while (i < line.length && line[i] !== ',') { field += line[i]; i++; }
+            out.push(field);
+            if (line[i] === ',') i++;
+        }
+    }
+    return out;
+}
+
+function normalizeDecimal(value) {
+    if (value == null || (typeof value === 'string' && !value.trim())) return (value || '').toString().trim();
+    const s = String(value).trim();
+    return s.replace(',', '.');
+}
+
+// Same logic as export_sheet_to_csv.py: skip first 3 rows, columns C–O, inherit H–M when N same, "to do" → empty H–N, same summit twice → inherit summit. Returns CSV string (header + rows).
+function processSheetToSummitsRows(sheetCsvText) {
+    const lines = sheetCsvText.split(/\r?\n/).filter(l => l.length > 0);
+    const dataLines = lines.slice(3); // skip rows 1–3
+    const header = 'Status,Name,Altitude [m],Summit Latitude,Summit Longitude,Season,Type,Grade,Distance [km],Duration [h],Elevation Gain [m],GPX File,Project';
+    let lastActivity = null;
+    let lastSummit = null;
+    const outRows = [];
+
+    for (let i = 0; i < dataLines.length; i++) {
+        let row = parseCsvLine(dataLines[i]);
+        if (row.length < 15) row = row.concat(Array(15 - row.length).fill(''));
+        const cToO = row.slice(2, 15);
+        let [status, name, altitude, summitLat, summitLon, season, type_, grade, distance, duration, elevationGain, gpxFile, project] = cToO;
+        let nameStripped = (name || '').trim();
+        const projectStripped = (project || '').trim();
+        const gpxFileStripped = (gpxFile || '').trim();
+        let seasonStripped = (season || '').trim();
+        const statusLower = (status || '').trim().toLowerCase();
+        const isToDo = statusLower === 'to do';
+
+        if (!nameStripped && !(summitLat || '').trim() && !(summitLon || '').trim()) {
+            if (lastSummit == null) continue;
+            [nameStripped, altitude, summitLat, summitLon] = lastSummit;
+        }
+        if (nameStripped === 'Summit' || nameStripped === 'Name' || gpxFileStripped === 'GPX File' || projectStripped === 'Project') continue;
+
+        const sameActivity = !isToDo && lastActivity != null && gpxFileStripped && gpxFileStripped === lastActivity[0];
+        if (sameActivity) {
+            const [, lastSeason, lastType, lastGrade, lastDistance, lastDuration, lastElevationGain] = lastActivity;
+            if (!seasonStripped) { season = lastSeason; seasonStripped = season; }
+            if (!(type_ || '').trim()) type_ = lastType;
+            if (!(grade || '').trim()) grade = lastGrade;
+            if (!(distance || '').trim()) distance = lastDistance;
+            if (!(duration || '').trim()) duration = lastDuration;
+            if (!(elevationGain || '').trim()) elevationGain = lastElevationGain;
+        }
+
+        if (gpxFileStripped && !isToDo) {
+            lastActivity = [gpxFileStripped, (season || '').trim(), (type_ || '').trim(), (grade || '').trim(), (distance || '').trim(), (duration || '').trim(), (elevationGain || '').trim()];
+        }
+
+        altitude = normalizeDecimal(altitude);
+        summitLat = normalizeDecimal(summitLat);
+        summitLon = normalizeDecimal(summitLon);
+        distance = normalizeDecimal(distance);
+        duration = normalizeDecimal(duration);
+        elevationGain = normalizeDecimal(elevationGain);
+
+        let outSeason, outType, outGrade, outDistance, outDuration, outElevationGain, outGpxFile;
+        if (isToDo) {
+            outSeason = outType = outGrade = outDistance = outDuration = outElevationGain = outGpxFile = '';
+        } else {
+            outSeason = (season || '').trim();
+            outType = (type_ || '').trim();
+            outGrade = (grade || '').trim();
+            outDistance = distance;
+            outDuration = duration;
+            outElevationGain = elevationGain;
+            outGpxFile = gpxFileStripped;
+        }
+
+        const escapeCsv = (v) => (v == null ? '' : String(v).includes(',') ? '"' + String(v).replace(/"/g, '""') + '"' : String(v));
+        outRows.push([(status || '').trim(), nameStripped, altitude, summitLat, summitLon, outSeason, outType, outGrade, outDistance, outDuration, outElevationGain, outGpxFile, projectStripped || 'No Project'].map(escapeCsv).join(','));
+        lastSummit = [nameStripped, altitude, summitLat, summitLon];
+    }
+
+    return header + '\n' + outRows.join('\n');
 }
 
 // Build popup HTML once for track layers (used by both visible and invisible layers)
@@ -197,12 +301,13 @@ function loadData() {
     gpxNameToMarker = {};
     gpxNameToTrack = {};
 
-    // Summits: cleaned local CSV. Bike: published Google Sheet.
+    // Summits: fetch published sheet and apply same processing as export_sheet_to_csv.py in the browser. Bike: published sheet as-is.
     const csvPath = getCsvPath();
     fetch(csvPath)
         .then(response => response.text())
         .then(csvText => {
-            const rows = csvText.split('\n').slice(1);
+            if (currentTab === 'summits') csvText = processSheetToSummitsRows(csvText);
+            const rows = csvText.split(/\r?\n/).slice(1);
             const summits = {};
             // When multiple summits share one activity, CSV export leaves activity columns empty for merged rows. Carry them over.
             let lastActivity = null;
@@ -210,7 +315,7 @@ function loadData() {
             rows.forEach(row => {
                 if (!row.trim()) return;
 
-                const columns = row.split(',');
+                const columns = parseCsvLine(row);
                 const isBikeTab = currentTab === 'bike';
                 const hasStatusCol = columns.length >= 13;
 
@@ -297,6 +402,25 @@ function loadData() {
                     }
 
                     summits[name] = true;
+                } else if (
+                    Number.isFinite(summitLatitude) &&
+                    Number.isFinite(summitLongitude) &&
+                    summits[name] &&
+                    hasStatusCol &&
+                    statusCol.toLowerCase() === 'to do'
+                ) {
+                    // Same summit seen again with Status "to do" (e.g. reverted for debugging): update icon to to-do style.
+                    const existing = markers.find(m => m.name === name && m.dataType === currentTab);
+                    if (existing) {
+                        const projectColor = projectColors[project] || defaultColor;
+                        existing.layer.setIcon(createTriangleIcon(projectColor, false));
+                        existing.layer.setPopupContent(`
+                            <b>${name} ${altitude ? `(${altitude}m)` : ''}</b><br>
+                            <b>Project:</b> ${project}<br>
+                            <b>Status:</b> to do
+                        `);
+                        existing.status = 'to do';
+                    }
                 }
 
                 // Load GeoJSON for every row that has a GPX file (same summit can have multiple tracks).
@@ -476,6 +600,7 @@ if (downloadCsvBtn) {
         fetch(csvPath)
             .then(function(response) { return response.text(); })
             .then(function(csvText) {
+                if (currentTab === 'summits') csvText = processSheetToSummitsRows(csvText);
                 const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);

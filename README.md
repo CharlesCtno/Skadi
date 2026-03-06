@@ -13,9 +13,9 @@ A static web app for visualizing mountain activities (hikes, ski, mountaineering
 
 ## Data Flow
 
-**Summits tab** reads `data/processed/activities_clean.csv`, produced by `scripts/export_sheet_to_csv.py`. That script downloads the summits Google Sheet (columns D–O from row 4), skips header/section rows, normalizes decimals, and writes a 12-column CSV. Workflow: edit Sheet → run script → refresh site.
+**Summits tab** fetches the summits Google Sheet from a published CSV URL (see `SUMMITS_SHEET_CSV_URL` in `script.js`). The same processing that used to run in `scripts/export_sheet_to_csv.py` (columns C–O from row 4, inheritance when N is the same, “to do” rows, same summit with different GPX) runs in the browser in `processSheetToSummitsRows()`. No local script to run: edit Sheet → refresh site.
 
-**Bike tab** fetches CSV directly from a published Google Sheet URL (see `getCsvPath()` in `script.js`). Same 12-column layout. Decimals must use dots (e.g. `132.3`).
+**Bike tab** fetches CSV directly from a published Google Sheet URL (see `getCsvPath()` in `script.js`). Same column layout. Decimals must use dots (e.g. `132.3`).
 
 **Tracks:** For each row with a non-empty GPX File field (column K), the app loads the corresponding GeoJSON — from `data/processed/` (summits) or `data/bike/processed/` (bike). GPX → GeoJSON conversion via `scripts/convert_gpx.py`.
 
@@ -39,7 +39,7 @@ A static web app for visualizing mountain activities (hikes, ski, mountaineering
 
 - `index.html` – Map container, tabs (Summits / Bike), filters (status, season, type), search
 - `script.js` – Map init, CSV parsing, markers (triangles colored by Project), track layers, filters, search
-- `scripts/export_sheet_to_csv.py` – Fetches summits Sheet, outputs `activities_clean.csv`
+- `scripts/export_sheet_to_csv.py` – Optional: same summits processing as in-browser; use if you want a local `activities_clean.csv` (e.g. for debugging)
 - `scripts/convert_gpx.py` – Converts GPX files to GeoJSON
 
 ## Conventions
@@ -50,5 +50,5 @@ A static web app for visualizing mountain activities (hikes, ski, mountaineering
 
 ## Roadmap
 
-- **Midterm:** Move pipeline fully to the browser (no local Python scripts)
+- ~~**Midterm:** Move pipeline fully to the browser (no local Python scripts)~~ — Summits tab now processes the sheet in the browser.
 - **Long-term:** Link Garmin Connect data to both the Google Sheet and the site
