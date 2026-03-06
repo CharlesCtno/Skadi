@@ -1,37 +1,41 @@
 import gpxpy
 import json
-import os
+from pathlib import Path
 
-def gpx_to_geojson(gpx_folder, output_folder):
+
+def gpx_to_geojson(gpx_folder: str, output_folder: str) -> None:
     """Convert all GPX files in a folder to GeoJSON."""
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+    src = Path(gpx_folder)
+    dst = Path(output_folder)
+    if not src.is_dir():
+        raise NotADirectoryError(f"GPX folder not found: {src}")
+    dst.mkdir(parents=True, exist_ok=True)
 
-    for gpx_file in os.listdir(gpx_folder):
-        if gpx_file.endswith(".gpx"):
-            input_path = os.path.join(gpx_folder, gpx_file)
-            output_path = os.path.join(output_folder, gpx_file.replace(".gpx", ".geojson"))
+    for input_path in sorted(src.glob("*.gpx")):
+        output_path = dst / (input_path.stem + ".geojson")
 
-            with open(input_path, "r") as f:
-                gpx = gpxpy.parse(f)
+        with open(input_path, "r", encoding="utf-8") as f:
+            gpx = gpxpy.parse(f)
 
-            features = []
-            for track in gpx.tracks:
-                for segment in track.segments:
-                    coordinates = [[point.longitude, point.latitude] for point in segment.points]
-                    feature = {
-                        "type": "Feature",
-                        "geometry": {"type": "LineString", "coordinates": coordinates},
-                        "properties": {"name": track.name or "Unnamed Track"}
-                    }
-                    features.append(feature)
+        features = []
+        for track in gpx.tracks:
+            for segment in track.segments:
+                coordinates = [
+                    [p.longitude, p.latitude] for p in segment.points
+                ]
+                features.append({
+                    "type": "Feature",
+                    "geometry": {"type": "LineString", "coordinates": coordinates},
+                    "properties": {"name": track.name or "Unnamed Track"},
+                })
 
-            geojson = {"type": "FeatureCollection", "features": features}
+        geojson = {"type": "FeatureCollection", "features": features}
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(geojson, f, indent=2)
 
-            with open(output_path, "w") as f:
-                json.dump(geojson, f, indent=2)
+        print(f"Converted: {input_path.name} → {output_path}")
 
-            print(f"Converted: {gpx_file} → {output_path}")
 
-#gpx_to_geojson("data/raw/", "data/processed/")
-gpx_to_geojson("data/bike/raw/", "data/bike/processed/")
+if __name__ == "__main__":
+    gpx_to_geojson("data/raw/", "data/processed/")
+    gpx_to_geojson("data/bike/raw/", "data/bike/processed/")

@@ -61,10 +61,30 @@ const projectColors = {
 // Default color for activities without a project
 const defaultColor = '#808080';
 
+function getTrackColorByType(type) {
+    const t = type.toLowerCase();
+    if (t.includes('ski')) return '#46bdc6';
+    if (t.includes('hike')) return '#ff6d01';
+    if (t.includes('mountaineering')) return '#ea4335';
+    if (t.includes('bike')) return '#fbbc04';
+    return defaultColor;
+}
+
 function getCsvPath() {
     return currentTab === 'bike'
         ? 'https://docs.google.com/spreadsheets/d/e/2PACX-1vReJHYuqYbldPykQitSbHf--VtP6x1dq18OnmvGmajO6t-NzTtv6-uALyNzcipSZ5uRajKziZcZvS9N/pub?gid=2069199560&single=true&output=csv'
         : 'data/processed/activities_clean.csv';
+}
+
+// Build popup HTML once for track layers (used by both visible and invisible layers)
+function buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType) {
+    let html = `<b>${gpxName}</b><br><b>Season:</b> ${season}`;
+    if (dataType !== 'bike') html += `<br><b>Type:</b> ${type}`;
+    if (grade) html += `<br><b>Grade:</b> ${grade}`;
+    if (distance) html += `<br><b>Distance:</b> ${distance} km`;
+    if (duration) html += `<br><b>Duration:</b> ${duration}`;
+    if (elevationGain) html += `<br><b>Elevation Gain:</b> ${elevationGain} m`;
+    return html;
 }
 
 // Function to load GeoJSON files dynamically
@@ -74,6 +94,8 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
     if (loadedGeoJSONFiles[dataType + gpxFile]) {
         return; // Skip if the file has already been loaded
     }
+
+    const popupContent = buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType);
 
     fetch(`${dataPath}${gpxFile}.geojson`)
         .then(response => {
@@ -87,33 +109,12 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
             const track = L.geoJSON(data, {
                 style: { color: color, weight: 3 },
                 onEachFeature: function(feature, layer) {
-                    let popupContent = `
-                        <b>${gpxName}</b><br>
-                        <b>Season:</b> ${season}
-                    `;
-
-                    // Only add Type to the popup if not in the bike tab
-                    if (dataType !== 'bike') {
-                        popupContent += `<br><b>Type:</b> ${type}`;
-                    }
-
-                    popupContent += `
-                        ${grade ? `<br><b>Grade:</b> ${grade}` : ''}
-                        ${distance ? `<br><b>Distance:</b> ${distance} km` : ''}
-                        ${duration ? `<br><b>Duration:</b> ${duration}` : ''}
-                        ${elevationGain ? `<br><b>Elevation Gain:</b> ${elevationGain} m` : ''}
-                    `;
-
                     layer.bindPopup(popupContent);
-
-                    // Add click event to bring the track to the front
-                    layer.on('click', function(e) {
+                    layer.on('click', function() {
                         track.bringToFront();
                         layer.setStyle({ weight: 6 });
                     });
-
-                    // Reset style when popup is closed
-                    layer.on('popupclose', function(e) {
+                    layer.on('popupclose', function() {
                         layer.setStyle({ weight: 3 });
                     });
                 }
@@ -124,35 +125,14 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
                 style: { color: 'transparent', weight: 15, opacity: 0 },
                 interactive: true,
                 onEachFeature: function(feature, layer) {
-                    let popupContent = `
-                        <b>${gpxName}</b><br>
-                        <b>Season:</b> ${season}
-                    `;
-
-                    // Only add Type to the popup if not in the bike tab
-                    if (dataType !== 'bike') {
-                        popupContent += `<br><b>Type:</b> ${type}`;
-                    }
-
-                    popupContent += `
-                        ${grade ? `<br><b>Grade:</b> ${grade}` : ''}
-                        ${distance ? `<br><b>Distance:</b> ${distance} km` : ''}
-                        ${duration ? `<br><b>Duration:</b> ${duration}` : ''}
-                        ${elevationGain ? `<br><b>Elevation Gain:</b> ${elevationGain} m` : ''}
-                    `;
-
                     layer.bindPopup(popupContent);
-
-                    // Add click event to bring the track to the front
-                    layer.on('click', function(e) {
+                    layer.on('click', function() {
                         track.bringToFront();
                         track.eachLayer(function(trackLayer) {
                             trackLayer.setStyle({ weight: 6 });
                         });
                     });
-
-                    // Reset style when popup is closed
-                    layer.on('popupclose', function(e) {
+                    layer.on('popupclose', function() {
                         track.eachLayer(function(trackLayer) {
                             trackLayer.setStyle({ weight: 3 });
                         });
@@ -222,46 +202,57 @@ function loadData() {
     fetch(csvPath)
         .then(response => response.text())
         .then(csvText => {
-            // First line is header, data starts at line 2.
             const rows = csvText.split('\n').slice(1);
-            const summits = {}; // Object to store unique summits
+            const summits = {};
+            // When multiple summits share one activity, CSV export leaves activity columns empty for merged rows. Carry them over.
+            let lastActivity = null;
 
             rows.forEach(row => {
-                if (!row.trim()) {
-                    return;
-                }
+                if (!row.trim()) return;
 
                 const columns = row.split(',');
+                const isBikeTab = currentTab === 'bike';
+                const hasStatusCol = columns.length >= 13;
+
                 if (columns.length < 12) {
                     console.warn('Skipping malformed CSV row (not enough columns):', row);
                     return;
                 }
 
-                const isBikeTab = currentTab === 'bike';
+                const statusCol = hasStatusCol ? (columns[0] || '').trim() : '';
+                const nameIdx = hasStatusCol ? 1 : 0;
+                let name = (columns[nameIdx] || '').trim();
+                let altitudeRaw = (columns[nameIdx + 1] || '').trim();
+                let summitLatitudeRaw = (columns[nameIdx + 2] || '').trim();
+                let summitLongitudeRaw = (columns[nameIdx + 3] || '').trim();
+                let season = (columns[nameIdx + 4] || '').trim();
+                let type = (columns[nameIdx + 5] || '').trim();
+                let grade = (columns[nameIdx + 6] || '').trim();
+                let distance = (columns[nameIdx + 7] || '').trim();
+                let duration = (columns[nameIdx + 8] || '').trim();
+                let elevationGain = (columns[nameIdx + 9] || '').trim();
+                let gpxFileRaw = (columns[nameIdx + 10] || '').trim();
+                let project = (columns[nameIdx + 11] || 'No Project').trim();
 
-                let name = (columns[0] || '').trim();
-                const altitudeRaw = (columns[1] || '').trim();
-                const summitLatitudeRaw = (columns[2] || '').trim();
-                const summitLongitudeRaw = (columns[3] || '').trim();
-                const season = (columns[4] || '').trim();
-                const type = (columns[5] || '').trim();
-                const grade = (columns[6] || '').trim();
-                const distance = (columns[7] || '').trim();
-                const duration = (columns[8] || '').trim();
-                const elevationGain = (columns[9] || '').trim();
+                // Inherit activity data from previous row when this row has summit but empty activity (merged cells in sheet).
+                if (lastActivity && !gpxFileRaw && !season) {
+                    season = lastActivity.season;
+                    type = lastActivity.type;
+                    grade = lastActivity.grade;
+                    distance = lastActivity.distance;
+                    duration = lastActivity.duration;
+                    elevationGain = lastActivity.elevationGain;
+                    gpxFileRaw = lastActivity.gpxFile;
+                    project = lastActivity.project || 'No Project';
+                } else if (gpxFileRaw || season) {
+                    lastActivity = { season, type, grade, distance, duration, elevationGain, gpxFile: gpxFileRaw, project };
+                }
 
-                const gpxFileRaw = (columns[10] || '').trim();
-                const project = (columns[11] || 'No Project').trim();
                 const gpxFile = gpxFileRaw || null;
-
                 let gpxName = (gpxFile ? gpxFile.replace(/_/g, ' ') : name).trim();
-                if (isBikeTab && !name && gpxName) {
-                    name = gpxName;
-                }
+                if (isBikeTab && !name && gpxName) name = gpxName;
 
-                if (!name && !gpxFile && !gpxName) {
-                    return;
-                }
+                if (!name && !gpxFile && !gpxName) return;
 
                 const altitude = parseFloat(altitudeRaw) || 0;
                 const summitLatitude = parseFloat(summitLatitudeRaw);
@@ -272,7 +263,15 @@ function loadData() {
                     Number.isFinite(summitLongitude) &&
                     !summits[name]
                 ) {
-                    const isCompleted = !!gpxFile;
+                    // Explicit Status (column C): "to do" overrides GPX presence; "completed" or empty → use GPX.
+                    let isCompleted;
+                    if (hasStatusCol && statusCol.toLowerCase() === 'to do') {
+                        isCompleted = false;
+                    } else if (hasStatusCol && statusCol.toLowerCase() === 'completed') {
+                        isCompleted = true;
+                    } else {
+                        isCompleted = !!gpxFile;
+                    }
                     const projectColor = projectColors[project] || defaultColor;
                     const summitIcon = createTriangleIcon(projectColor, isCompleted);
 
@@ -294,35 +293,20 @@ function loadData() {
                     });
 
                     if (gpxName) {
-                        if (!gpxNames.includes(gpxName)) {
-                            gpxNames.push(gpxName);
-                        }
                         gpxNameToMarker[gpxName] = marker;
                     }
 
                     summits[name] = true;
                 }
 
-                // Inside the loadData function, where you load GeoJSON files
+                // Load GeoJSON for every row that has a GPX file (same summit can have multiple tracks).
                 if (gpxFile && gpxName) {
-                    let trackColor;
-                    if (currentTab === 'bike') {
-                        // Use project color for bike tracks
-                        trackColor = projectColors[project] || '#32CD32'; // Default to lime green if project color is not defined
-                    } else {
-                        // Use type-based color for summit tracks
-                        if (type.toLowerCase().includes('ski')) {
-                            trackColor = '#46bdc6';
-                        } else if (type.toLowerCase().includes('hike')) {
-                            trackColor = '#ff6d01';
-                        } else if (type.toLowerCase().includes('mountaineering')) {
-                            trackColor = '#ea4335';
-                        } else if (type.toLowerCase().includes('bike')) {
-                            trackColor = '#fbbc04';
-                        } else {
-                            trackColor = defaultColor;
-                        }
+                    if (!gpxNames.includes(gpxName)) {
+                        gpxNames.push(gpxName);
                     }
+                    const trackColor = currentTab === 'bike'
+                        ? (projectColors[project] || '#32CD32')
+                        : getTrackColorByType(type);
 
                     const formattedDuration = formatDuration(duration);
                     loadGeoJSON(
@@ -346,40 +330,51 @@ function loadData() {
         });
 }
 
-// Function to handle search
-document.getElementById('search').addEventListener('input', function(e) {
-    const searchTerm = e.target.value.toLowerCase();
+// Debounce helper to limit search updates while typing
+function debounce(fn, ms) {
+    let timeoutId;
+    return function(...args) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => fn.apply(this, args), ms);
+    };
+}
+
+function runSearch() {
+    const searchInput = document.getElementById('search');
+    const searchTerm = searchInput.value.toLowerCase();
     const resultsContainer = document.getElementById('search-results');
     const clearSearchButton = document.getElementById('clear-search');
 
-    if (searchTerm.length > 0) {
-        clearSearchButton.style.display = 'block';
-    } else {
+    if (searchTerm.length === 0) {
         clearSearchButton.style.display = 'none';
         resultsContainer.style.display = 'none';
         return;
     }
+    clearSearchButton.style.display = 'block';
 
-    const matches = gpxNames.filter(gpxName => gpxName.toLowerCase().includes(searchTerm));
-
+    const matches = gpxNames.filter(name => name.toLowerCase().includes(searchTerm));
+    resultsContainer.innerHTML = '';
     if (matches.length > 0) {
-        resultsContainer.innerHTML = '';
+        const fragment = document.createDocumentFragment();
         matches.forEach(match => {
             const div = document.createElement('div');
             div.textContent = match;
             div.style.color = 'white';
             div.addEventListener('click', function() {
-                e.target.value = match;
+                searchInput.value = match;
                 resultsContainer.style.display = 'none';
                 focusOnGPXName(match);
             });
-            resultsContainer.appendChild(div);
+            fragment.appendChild(div);
         });
+        resultsContainer.appendChild(fragment);
         resultsContainer.style.display = 'block';
     } else {
         resultsContainer.style.display = 'none';
     }
-});
+}
+
+document.getElementById('search').addEventListener('input', debounce(runSearch, 150));
 
 // Clear search input
 document.getElementById('clear-search').addEventListener('click', function() {

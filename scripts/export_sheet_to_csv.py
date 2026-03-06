@@ -1,7 +1,6 @@
 import csv
-import io
+import os
 import requests
-
 
 SHEET_CSV_URL = (
     "https://docs.google.com/spreadsheets/d/"
@@ -13,17 +12,15 @@ OUTPUT_PATH = "data/processed/activities_clean.csv"
 
 
 def normalize_decimal(value: str) -> str:
-    """
-    Replace comma decimal separators with dots, but leave empty strings as-is.
-    """
-    value = value.strip()
-    if not value:
-        return value
-    return value.replace(",", ".")
+    """Replace comma decimal separators with dots; leave empty strings as-is."""
+    if not value or not value.strip():
+        return value.strip()
+    return value.strip().replace(",", ".")
 
 
 def main() -> None:
-    resp = requests.get(SHEET_CSV_URL)
+    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+    resp = requests.get(SHEET_CSV_URL, timeout=30)
     resp.raise_for_status()
 
     # Decode as UTF-8 explicitly to avoid mojibake with accented characters.
@@ -33,9 +30,10 @@ def main() -> None:
     lines = text.splitlines()[3:]
     reader = csv.reader(lines)
 
-    # We only keep columns D–O (12 columns): indices 3..14 (inclusive) in 0-based CSV rows.
-    # Map them to the same header structure as the existing activities.csv.
+    # Keep columns C–O (13 columns): Status, Name, Altitude, ..., Project.
+    # Indices 2..14 (0-based). Row must have at least 15 elements.
     header = [
+        "Status",
         "Name",
         "Altitude [m]",
         "Summit Latitude",
@@ -54,16 +52,20 @@ def main() -> None:
         writer = csv.writer(f_out)
         writer.writerow(header)
 
+        # When multiple summits share one activity, merged cells leave H–M empty on extra rows.
+        # Column N (GPX File) identifies the activity. We never write N: if a row has N empty (e.g. Status "to do") we output empty for N and H–M.
+        # Inherit H–M only when this row has N filled and N is the same as previous row.
+        # Same summit can appear twice with different N (e.g. Grammont + "Grammont", Grammont + "Grammont_&_Alamont"); when name/lat/lon are empty (merged), inherit summit from previous row so we output two lines.
+        last_activity = None  # (last_N, last_season, last_type, last_grade, last_distance, last_duration, last_elevation_gain)
+        last_summit = None  # (name, altitude, summit_lat, summit_lon) after normalization, for rows with merged summit cells
+
         for row in reader:
-            # Pad short rows so we can safely slice
-            if len(row) < 15:  # need indices up to 14
+            if len(row) < 15:
                 row = row + [""] * (15 - len(row))
 
-            # Slice D–O -> indices 3..14
-            d_to_o = row[3:15]
-
-            # Unpack the fields we care about
+            c_to_o = row[2:15]
             (
+                status,
                 name,
                 altitude,
                 summit_lat,
@@ -76,17 +78,20 @@ def main() -> None:
                 elevation_gain,
                 gpx_file,
                 project,
-            ) = d_to_o
+            ) = c_to_o
 
             name_stripped = name.strip()
             project_stripped = project.strip()
             gpx_file_stripped = gpx_file.strip()
+            season_stripped = season.strip()
+            status_lower = status.strip().lower()
+            is_to_do = status_lower == "to do"
 
-            # Skip rows that have no name and no coordinates – likely headers/empty.
             if not name_stripped and not summit_lat.strip() and not summit_lon.strip():
-                continue
-
-            # Skip header/section rows that repeat the column titles inside the table.
+                if last_summit is None:
+                    continue
+                # Same summit, different activity (e.g. second GPX): inherit summit from previous row so we output two lines.
+                name_stripped, altitude, summit_lat, summit_lon = last_summit[0], last_summit[1], last_summit[2], last_summit[3]
             if (
                 name_stripped in ("Summit", "Name")
                 or gpx_file_stripped == "GPX File"
@@ -94,7 +99,50 @@ def main() -> None:
             ):
                 continue
 
-            # Normalize decimals for numeric fields
+            # Rows with N empty (e.g. Status "to do"): we never write to N or H–M; leave them empty.
+            # Only inherit H–M when this row has N filled and N is the same as previous row (same activity).
+            same_activity = (
+                not is_to_do
+                and last_activity is not None
+                and gpx_file_stripped
+                and gpx_file_stripped == last_activity[0]
+            )
+            if same_activity:
+                (
+                    _last_n,
+                    last_season,
+                    last_type,
+                    last_grade,
+                    last_distance,
+                    last_duration,
+                    last_elevation_gain,
+                ) = last_activity
+                if not season_stripped:
+                    season = last_season
+                    season_stripped = season
+                if not type_.strip():
+                    type_ = last_type
+                if not grade.strip():
+                    grade = last_grade
+                if not distance.strip():
+                    distance = last_distance
+                if not duration.strip():
+                    duration = last_duration
+                if not elevation_gain.strip():
+                    elevation_gain = last_elevation_gain
+
+            # When this row has N filled and is not "to do", store N and H–M for the next row.
+            if gpx_file_stripped and not is_to_do:
+                last_activity = (
+                    gpx_file_stripped,
+                    season.strip(),
+                    type_.strip(),
+                    grade.strip(),
+                    distance.strip(),
+                    duration.strip(),
+                    elevation_gain.strip(),
+                )
+
             altitude = normalize_decimal(altitude)
             summit_lat = normalize_decimal(summit_lat)
             summit_lon = normalize_decimal(summit_lon)
@@ -102,22 +150,42 @@ def main() -> None:
             duration = normalize_decimal(duration)
             elevation_gain = normalize_decimal(elevation_gain)
 
+            # For "to do" rows (N empty): never write to N or H–M; output empty so CSV matches the sheet.
+            if is_to_do:
+                out_season = ""
+                out_type = ""
+                out_grade = ""
+                out_distance = ""
+                out_duration = ""
+                out_elevation_gain = ""
+                out_gpx_file = ""
+            else:
+                out_season = season.strip()
+                out_type = type_.strip()
+                out_grade = grade.strip()
+                out_distance = distance
+                out_duration = duration
+                out_elevation_gain = elevation_gain
+                out_gpx_file = gpx_file_stripped
+
             writer.writerow(
                 [
+                    status.strip(),
                     name_stripped,
                     altitude,
                     summit_lat,
                     summit_lon,
-                    season.strip(),
-                    type_.strip(),
-                    grade.strip(),
-                    distance,
-                    duration,
-                    elevation_gain,
-                    gpx_file_stripped,
+                    out_season,
+                    out_type,
+                    out_grade,
+                    out_distance,
+                    out_duration,
+                    out_elevation_gain,
+                    out_gpx_file,
                     project_stripped or "No Project",
                 ]
             )
+            last_summit = (name_stripped, altitude, summit_lat, summit_lon)
 
 
 if __name__ == "__main__":
