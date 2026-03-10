@@ -47,6 +47,16 @@ function formatDuration(duration) {
     return minutes < 10 ? `${hours}h0${minutes}` : `${hours}h${minutes}`;
 }
 
+// Normalize sheet GPX values ("foo", "foo.gpx", "foo.geojson") to basename "foo".
+function normalizeGpxBaseName(value) {
+    const raw = (value || '').trim();
+    if (!raw) return '';
+    return raw
+        .replace(/^.*[\\/]/, '')
+        .replace(/\.geojson$/i, '')
+        .replace(/\.gpx$/i, '');
+}
+
 // Define colors for each project
 const projectColors = {
     'Proxima': '#45818e',
@@ -194,14 +204,16 @@ function buildTrackPopupContent(gpxName, season, type, grade, distance, duration
 // Function to load GeoJSON files dynamically
 function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, elevationGain, gpxName, dataType) {
     const dataPath = dataType === 'bike' ? 'data/bike/processed/' : 'data/processed/';
+    const gpxBaseName = normalizeGpxBaseName(gpxFile);
+    if (!gpxBaseName) return;
 
-    if (loadedGeoJSONFiles[dataType + gpxFile]) {
+    if (loadedGeoJSONFiles[dataType + gpxBaseName]) {
         return; // Skip if the file has already been loaded
     }
 
     const popupContent = buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType);
 
-    fetch(`${dataPath}${gpxFile}.geojson`)
+    fetch(`${dataPath}${gpxBaseName}.geojson`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`Failed to load GeoJSON: ${response.status} ${response.statusText}`);
@@ -256,10 +268,10 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
                 dataType: dataType
             });
 
-            loadedGeoJSONFiles[dataType + gpxFile] = true; // Mark this file as loaded
+            loadedGeoJSONFiles[dataType + gpxBaseName] = true; // Mark this file as loaded
         })
         .catch(error => {
-            console.error(`Error loading ${gpxFile}.geojson:`, error);
+            console.error(`Error loading ${gpxBaseName}.geojson:`, error);
         });
 }
 
@@ -350,10 +362,19 @@ function loadData() {
                     gpxFileRaw = lastActivity.gpxFile;
                     project = lastActivity.project || 'No Project';
                 } else if (gpxFileRaw || season) {
-                    lastActivity = { season, type, grade, distance, duration, elevationGain, gpxFile: gpxFileRaw, project };
+                    lastActivity = {
+                        season,
+                        type,
+                        grade,
+                        distance,
+                        duration,
+                        elevationGain,
+                        gpxFile: normalizeGpxBaseName(gpxFileRaw),
+                        project
+                    };
                 }
 
-                const gpxFile = gpxFileRaw || null;
+                const gpxFile = normalizeGpxBaseName(gpxFileRaw) || null;
                 let gpxName = (gpxFile ? gpxFile.replace(/_/g, ' ') : name).trim();
                 if (isBikeTab && !name && gpxName) name = gpxName;
 
