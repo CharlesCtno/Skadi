@@ -71,7 +71,7 @@ function getTrackColorByType(type) {
 }
 
 // Summits: published sheet (gid=0). Bike: published sheet (gid=2069199560).
-const SUMMITS_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vReJHYuqYbldPykQitSbHf--VtP6x1dq18OnmvGmajO6t-NzTtv6-uALyNzcipSZ5uRajKziZcZvS9N/pub?gid=0&single=true&output=csv';
+const SUMMITS_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRa2uc5r5sohJICr4Hb4TyQwlJxwtFCVk_NLqu_APJ6yF2FturE2YhbAhuaV_THn6AA0d9U_4BafJ9m/pub?gid=0&single=true&output=csv';
 
 function getCsvPath() {
     return currentTab === 'bike'
