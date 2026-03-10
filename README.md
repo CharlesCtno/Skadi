@@ -1,31 +1,66 @@
 # Skadi
 
-A static web app for visualizing mountain activities (hikes, ski, mountaineering, bike) on an interactive Leaflet map, using GeoJSON tracks and CSV activity lists.
+Static web app to visualize mountain and bike activities on a Leaflet map using Google Sheets (published CSV) + GeoJSON tracks.
 
 ## Live Site
 
 [https://charlesctno.github.io/Skadi](https://charlesctno.github.io/Skadi)
 
-## Stack
+## Architecture
 
-- **Frontend:** Single-page HTML + vanilla JS (`index.html`, `script.js`), Leaflet map, no build step
-- **Data:** CSV (or Google Sheets published CSV) + GeoJSON track files
+- **Frontend:** `index.html` + `script.js` (vanilla JS, no build step)
+- **Track data:** `data/raw/` and `data/bike/raw/` for GPX, `data/processed/` and `data/bike/processed/` for GeoJSON
+- **Activity metadata:** Google Sheets published as CSV (summits + bike tabs)
+- **Automation:** GitHub Actions + `scripts/strava_sync.py` + `scripts/convert_gpx.py`
 
-## Data Flow
+## Current Data Flow
 
-**Summits tab** fetches the summits Google Sheet from a published CSV URL (see `SUMMITS_SHEET_CSV_URL` in `script.js`). The processing that used to run in `scripts/export_sheet_to_csv.py` (columns C–O from row 4, inheritance when N is the same, "to do" rows, same summit with different GPX) now runs in the browser in `processSheetToSummitsRows()`. No local script needed: edit Sheet → refresh site.
+1. Manual GitHub Action (`Strava Sync (Manual)`) is triggered with an exact Strava activity name.
+2. `scripts/strava_sync.py`:
+   - fetches activity from Strava (pagination supported for exact-name search),
+   - downloads GPX (export endpoint, with stream fallback),
+   - stores GPX in `data/raw/` or `data/bike/raw/`,
+   - updates Google Sheet rows (match existing summit names or insert new rows),
+   - updates sync cursor in `data/strava_last_sync.json`.
+3. Same workflow converts only newly imported GPX files to GeoJSON via `scripts/convert_gpx.py`.
+4. Workflow commits/pushes GPX + GeoJSON + state to `main`.
+5. Website fetches published CSV and loads matching GeoJSON files.
 
-**Bike tab** fetches CSV directly from a published Google Sheet URL (see `getCsvPath()` in `script.js`). Same column layout. Decimals must use dots (e.g. `132.3`).
+## Workflows
 
-**Tracks:** For each row with a non-empty GPX File field (column K), the app loads the corresponding GeoJSON — from `data/processed/` (summits) or `data/bike/processed/` (bike). GPX → GeoJSON conversion via `scripts/convert_gpx.py`.
+- `/.github/workflows/strava_sync.yml`
+  - Trigger: `workflow_dispatch`
+  - Input: `activity_name` (required, exact match)
+  - Auth: Google OIDC + Strava OAuth secrets
+  - Converts only newly added/modified GPX in current run
+  - Commits:
+    - `data/raw/`
+    - `data/bike/raw/`
+    - `data/processed/`
+    - `data/bike/processed/`
+    - `data/strava_last_sync.json`
 
-## CSV Column Schema
+- `/.github/workflows/convert-gpx.yml`
+  - Trigger: push affecting `data/raw/**/*.gpx` or `data/bike/raw/**/*.gpx`
+  - Use case: fallback/manual conversion path when GPX files are pushed directly
+
+## Secrets Required (GitHub)
+
+- `STRAVA_CLIENT_ID`
+- `STRAVA_CLIENT_SECRET`
+- `STRAVA_REFRESH_TOKEN`
+- `GOOGLE_SHEETS_SPREADSHEET_ID`
+- `GOOGLE_SHEETS_TAB_NAME`
+- `GCP_WORKLOAD_IDENTITY_PROVIDER`
+- `GCP_SERVICE_ACCOUNT_EMAIL`
+
+## Google Sheet / CSV Schema (frontend)
 
 | # | Field |
 |---|-------|
 | 0 | Name |
 | 1 | Altitude |
-| 2–3 | Summit Lat/Lon |
+| 2-3 | Summit Lat/Lon |
 | 4 | Season |
 | 5 | Type |
 | 6 | Grade |
@@ -35,20 +70,22 @@ A static web app for visualizing mountain activities (hikes, ski, mountaineering
 | 10 | GPX File |
 | 11 | Project |
 
+## Frontend Notes
+
+- Summits tab CSV is fetched from `SUMMITS_SHEET_CSV_URL` in `script.js`.
+- Bike tab CSV URL is returned by `getCsvPath()` in `script.js`.
+- Summits sheet preprocessing is done client-side in `processSheetToSummitsRows()`.
+- GPX file values are normalized in `script.js`, so `Monts_Telliers`, `Monts_Telliers.gpx`, or `Monts_Telliers.geojson` all resolve to `Monts_Telliers.geojson`.
+
 ## Key Files
 
-- `index.html` – Map container, tabs (Summits / Bike), filters (status, season, type), search
-- `script.js` – Map init, CSV parsing, markers (triangles colored by Project), track layers, filters, search
-- `scripts/export_sheet_to_csv.py` – Optional: same summits processing as in-browser; use for local `activities_clean.csv` (e.g. debugging)
-- `scripts/convert_gpx.py` – Converts GPX files to GeoJSON
+- `index.html`: map container and UI
+- `script.js`: CSV parsing, marker rendering, track loading/filter/search
+- `scripts/strava_sync.py`: Strava + Sheets sync logic
+- `scripts/convert_gpx.py`: GPX to GeoJSON conversion
+- `scripts/test_sheet_sync.py`: optional local test helper for sheet insertion/update logic
 
-## Conventions
+## Notes
 
-- Project colors defined in `projectColors` in `script.js`; markers and bike tracks colored by Project, summit tracks by activity type
-- Bike rows may have empty Name/Altitude/Lat/Lon; tracks still load using GPX File field
-- Decimals must be dots in source data — no conversion happens in the frontend
-
-## Roadmap
-
-- ~~**Midterm:** Move pipeline fully to the browser~~ — Summits tab now processes the sheet directly in the browser ✓
-- **Long-term:** Link Garmin Connect data to both the Google Sheet and the site
+- `scripts/export_sheet_to_csv.py` is no longer part of the main flow.
+- Decimals in source sheet data must use dots (`132.3`).
