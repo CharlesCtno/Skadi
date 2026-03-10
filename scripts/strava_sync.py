@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Tuple
 import gpxpy
 import requests
 from google.auth import default as google_auth_default
+from googleapiclient.errors import HttpError
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -540,10 +541,24 @@ def update_existing_row_auto_fields(
     if not _row_cell(existing_row, 15) and activity_url:
         data.append({"range": f"{sheet_name}!P{row_1}", "values": [[activity_url]]})
 
-    sheets_service.spreadsheets().values().batchUpdate(
-        spreadsheetId=spreadsheet_id,
-        body={"valueInputOption": "RAW", "data": data},
-    ).execute()
+    for item in data:
+        try:
+            sheets_service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id,
+                range=item["range"],
+                valueInputOption="RAW",
+                body={"values": item["values"]},
+            ).execute()
+        except HttpError as exc:
+            status = exc.resp.status if exc.resp is not None else None
+            message = str(exc)
+            if status == 400 and "protected cell or object" in message.lower():
+                print(
+                    f"WARNING: Skipping protected range {item['range']} "
+                    "while updating existing summit row."
+                )
+                continue
+            raise
 
 
 def insert_new_row_at(
