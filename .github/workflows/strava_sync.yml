@@ -64,4 +64,7 @@ jobs:
             exit 0
           fi
           git commit -m "[strava-sync] Add GPX for activity ${ACTIVITY_NAME}"
-          git push
+          # Another workflow/user may have pushed to main while this job was running.
+          # Rebase onto latest origin/main, then push.
+          git pull --rebase origin main
+          git push origin HEAD:main
