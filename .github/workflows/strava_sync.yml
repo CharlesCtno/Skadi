@@ -52,9 +52,23 @@ jobs:
         run: |
           python scripts/strava_sync.py --activity-name "${ACTIVITY_NAME}"
 
-      - name: Convert GPX to GeoJSON
+      - name: Convert only new GPX to GeoJSON
         run: |
-          python scripts/convert_gpx.py
+          mapfile -t GPX_FILES < <(
+            git diff --name-only --diff-filter=AM -- data/raw/ data/bike/raw/ |
+            while read -r f; do
+              case "$f" in
+                *.gpx) echo "$f" ;;
+              esac
+            done
+          )
+          if [ "${#GPX_FILES[@]}" -eq 0 ]; then
+            echo "No new GPX files to convert."
+            exit 0
+          fi
+          echo "Converting ${#GPX_FILES[@]} new GPX file(s):"
+          printf ' - %s\n' "${GPX_FILES[@]}"
+          python scripts/convert_gpx.py "${GPX_FILES[@]}"
 
       - name: Commit and push GPX/state
         env:
