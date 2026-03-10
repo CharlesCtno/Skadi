@@ -3,6 +3,7 @@ import os
 import re
 import time
 import argparse
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,7 @@ from googleapiclient.discovery import build
 STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token"
 STRAVA_ACTIVITIES_URL = "https://www.strava.com/api/v3/athlete/activities"
 STRAVA_EXPORT_GPX_URL = "https://www.strava.com/api/v3/activities/{activity_id}/export_gpx"
+STRAVA_STREAMS_URL = "https://www.strava.com/api/v3/activities/{activity_id}/streams"
 NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 
 STATE_PATH = Path("data/strava_last_sync.json")
@@ -250,6 +252,69 @@ def download_gpx(access_token: str, activity_id: int) -> bytes:
     response = requests.get(url, headers=headers, timeout=60)
     response.raise_for_status()
     return response.content
+
+
+def _build_minimal_gpx_from_streams(activity_id: int, streams_payload: dict) -> bytes:
+    latlng_stream = streams_payload.get("latlng", {})
+    altitude_stream = streams_payload.get("altitude", {})
+    time_stream = streams_payload.get("time", {})
+
+    latlng_data = latlng_stream.get("data") or []
+    altitude_data = altitude_stream.get("data") or []
+    time_data = time_stream.get("data") or []
+
+    if not latlng_data:
+        raise RuntimeError(f"No latlng stream available for activity {activity_id}")
+
+    gpx = ET.Element(
+        "gpx",
+        attrib={
+            "version": "1.1",
+            "creator": "Skadi Strava Sync",
+            "xmlns": "http://www.topografix.com/GPX/1/1",
+        },
+    )
+    trk = ET.SubElement(gpx, "trk")
+    name = ET.SubElement(trk, "name")
+    name.text = str(activity_id)
+    trkseg = ET.SubElement(trk, "trkseg")
+
+    for idx, pair in enumerate(latlng_data):
+        if not isinstance(pair, list) or len(pair) != 2:
+            continue
+        lat, lon = pair[0], pair[1]
+        trkpt = ET.SubElement(trkseg, "trkpt", attrib={"lat": str(lat), "lon": str(lon)})
+        if idx < len(altitude_data):
+            ele = ET.SubElement(trkpt, "ele")
+            ele.text = str(altitude_data[idx])
+        if idx < len(time_data):
+            # Keep elapsed seconds to preserve ordering when present.
+            t = ET.SubElement(trkpt, "time")
+            t.text = str(time_data[idx])
+
+    return ET.tostring(gpx, encoding="utf-8", xml_declaration=True)
+
+
+def download_gpx_with_fallback(access_token: str, activity_id: int) -> bytes:
+    """Try export_gpx endpoint first; fallback to streams-built minimal GPX on 404."""
+    try:
+        return download_gpx(access_token, activity_id)
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else None
+        if status != 404:
+            raise
+
+    print(f"export_gpx unavailable for activity {activity_id} (HTTP 404). Falling back to streams.")
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = requests.get(
+        STRAVA_STREAMS_URL.format(activity_id=activity_id),
+        headers=headers,
+        params={"keys": "latlng,altitude,time", "key_by_type": "true"},
+        timeout=60,
+    )
+    response.raise_for_status()
+    streams_payload = response.json()
+    return _build_minimal_gpx_from_streams(activity_id, streams_payload)
 
 
 def parse_gpx_start_coords(gpx_bytes: bytes) -> Tuple[Optional[float], Optional[float]]:
@@ -779,19 +844,28 @@ def main() -> None:
         activity_url = f"https://www.strava.com/activities/{activity.activity_id}"
         gpx_rel_path = out_dir / gpx_filename
         try:
-            gpx_bytes = download_gpx(access_token, activity.activity_id)
+            gpx_bytes = download_gpx_with_fallback(access_token, activity.activity_id)
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else None
             if status in {401, 403, 404}:
                 print(
                     f"Skipping activity id={activity.activity_id} name='{activity.name}': "
-                    f"GPX export unavailable (HTTP {status})."
+                    f"GPX unavailable (HTTP {status}) even after fallback."
                 )
                 if not is_manual_mode:
                     last_epoch = max(last_epoch, activity.start_date_epoch)
                     last_activity_id = max(last_activity_id, activity.activity_id)
                 continue
             raise
+        except RuntimeError as exc:
+            print(
+                f"Skipping activity id={activity.activity_id} name='{activity.name}': "
+                f"{exc}"
+            )
+            if not is_manual_mode:
+                last_epoch = max(last_epoch, activity.start_date_epoch)
+                last_activity_id = max(last_activity_id, activity.activity_id)
+            continue
         gpx_rel_path.write_bytes(gpx_bytes)
 
         lat, lon = parse_gpx_start_coords(gpx_bytes)
