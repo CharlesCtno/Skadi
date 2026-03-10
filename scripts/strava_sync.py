@@ -425,23 +425,54 @@ def fetch_peak_from_nominatim(
     """
     candidates = []
     for query in _nominatim_query_variants(summit_name):
-        try:
-            response = requests.get(
-                NOMINATIM_SEARCH_URL,
-                params={
-                    "q": query,
-                    "format": "json",
-                    "extratags": 1,
-                    "limit": 10,
-                },
-                headers={"User-Agent": "SkadiApp/1.0"},
-                timeout=30,
-            )
-            response.raise_for_status()
-            items = response.json()
-        finally:
-            # Respect Nominatim rate limits (1 request/sec max).
-            time.sleep(1.0)
+        items = []
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = requests.get(
+                    NOMINATIM_SEARCH_URL,
+                    params={
+                        "q": query,
+                        "format": "json",
+                        "extratags": 1,
+                        "limit": 10,
+                    },
+                    headers={"User-Agent": "SkadiApp/1.0"},
+                    timeout=30,
+                )
+                if response.status_code == 429:
+                    retry_after_raw = response.headers.get("Retry-After", "").strip()
+                    try:
+                        retry_after = float(retry_after_raw) if retry_after_raw else float(2 ** attempt)
+                    except ValueError:
+                        retry_after = float(2 ** attempt)
+                    print(
+                        f"WARNING: Nominatim rate-limited query '{query}' (attempt {attempt}/{max_attempts}). "
+                        f"Retrying in {retry_after:.1f}s."
+                    )
+                    time.sleep(retry_after)
+                    continue
+
+                response.raise_for_status()
+                items = response.json()
+                break
+            except requests.RequestException as exc:
+                if attempt == max_attempts:
+                    print(
+                        f"WARNING: Nominatim request failed for '{query}' after {max_attempts} attempts: {exc}. "
+                        "Altitude and coordinates left blank."
+                    )
+                    items = []
+                else:
+                    backoff = float(2 ** attempt)
+                    print(
+                        f"WARNING: Nominatim request error for '{query}' (attempt {attempt}/{max_attempts}): {exc}. "
+                        f"Retrying in {backoff:.1f}s."
+                    )
+                    time.sleep(backoff)
+            finally:
+                # Respect Nominatim rate limits (1 request/sec max).
+                time.sleep(1.0)
 
         for item in items:
             if not _is_peak_result(item):
