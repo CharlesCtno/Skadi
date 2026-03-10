@@ -52,13 +52,17 @@ jobs:
         run: |
           python scripts/strava_sync.py --activity-name "${ACTIVITY_NAME}"
 
+      - name: Convert GPX to GeoJSON
+        run: |
+          python scripts/convert_gpx.py
+
       - name: Commit and push GPX/state
         env:
           ACTIVITY_NAME: ${{ inputs.activity_name }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/raw/ data/strava_last_sync.json
+          git add data/raw/ data/bike/raw/ data/processed/ data/bike/processed/ data/strava_last_sync.json
           if git diff --staged --quiet; then
             echo "No changes to commit."
             exit 0

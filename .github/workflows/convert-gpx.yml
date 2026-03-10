@@ -8,18 +8,23 @@ on:
     paths:
       - 'data/raw/**/*.gpx'
       - 'data/bike/raw/**/*.gpx'
+  workflow_run:
+    workflows: ["Strava Sync (Manual)"]
+    types: [completed]
 
 permissions:
   contents: write
 
 jobs:
   convert:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -32,13 +37,18 @@ jobs:
       - name: Get added/modified GPX files
         id: gpx-files
         run: |
-          BEFORE="${{ github.event.before }}"
-          AFTER="${{ github.sha }}"
-          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            # New branch or first push: consider all .gpx in the paths
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            # workflow_run payload has no before/after range; convert all GPX files in repo
             FILES=$(find data/raw data/bike/raw -name '*.gpx' 2>/dev/null || true)
           else
-            FILES=$(git diff --name-only --diff-filter=AM "$BEFORE" "$AFTER" -- data/raw/ data/bike/raw/ | grep '\.gpx$' || true)
+            BEFORE="${{ github.event.before }}"
+            AFTER="${{ github.sha }}"
+            if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            # New branch or first push: consider all .gpx in the paths
+              FILES=$(find data/raw data/bike/raw -name '*.gpx' 2>/dev/null || true)
+            else
+              FILES=$(git diff --name-only --diff-filter=AM "$BEFORE" "$AFTER" -- data/raw/ data/bike/raw/ | grep '\.gpx$' || true)
+            fi
           fi
           # Output as single line for passing to next step; skip empty
           echo "files<<EOF" >> $GITHUB_OUTPUT
