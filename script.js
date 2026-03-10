@@ -92,25 +92,27 @@ function getCsvPath() {
 // Parse one CSV line (handles quoted fields and "" escape). Returns array of strings.
 function parseCsvLine(line) {
     const out = [];
-    let i = 0;
-    while (i < line.length) {
-        if (line[i] === '"') {
-            i++;
-            let field = '';
-            while (i < line.length) {
-                if (line[i] === '"') {
-                    if (line[i + 1] === '"') { field += '"'; i += 2; }
-                    else { i++; break; }
-                } else { field += line[i]; i++; }
+    let field = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+                field += '"';
+                i++;
+            } else {
+                inQuotes = !inQuotes;
             }
+        } else if (ch === ',' && !inQuotes) {
             out.push(field);
+            field = '';
         } else {
-            let field = '';
-            while (i < line.length && line[i] !== ',') { field += line[i]; i++; }
-            out.push(field);
-            if (line[i] === ',') i++;
+            field += ch;
         }
     }
+    // Keep trailing empty fields (e.g. "...," -> last value is empty string).
+    out.push(field);
     return out;
 }
 
