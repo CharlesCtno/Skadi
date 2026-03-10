@@ -126,16 +126,16 @@ function normalizeDecimal(value) {
 function processSheetToSummitsRows(sheetCsvText) {
     const lines = sheetCsvText.split(/\r?\n/).filter(l => l.length > 0);
     const dataLines = lines.slice(3); // skip rows 1–3
-    const header = 'Status,Name,Altitude [m],Summit Latitude,Summit Longitude,Season,Type,Grade,Distance [km],Duration [h],Elevation Gain [m],GPX File,Project';
+    const header = 'Status,Name,Altitude [m],Summit Latitude,Summit Longitude,Season,Type,Grade,Distance [km],Duration [h],Elevation Gain [m],GPX File,Project,Activity URL';
     let lastActivity = null;
     let lastSummit = null;
     const outRows = [];
 
     for (let i = 0; i < dataLines.length; i++) {
         let row = parseCsvLine(dataLines[i]);
-        if (row.length < 15) row = row.concat(Array(15 - row.length).fill(''));
-        const cToO = row.slice(2, 15);
-        let [status, name, altitude, summitLat, summitLon, season, type_, grade, distance, duration, elevationGain, gpxFile, project] = cToO;
+        if (row.length < 16) row = row.concat(Array(16 - row.length).fill(''));
+        const cToO = row.slice(2, 16);
+        let [status, name, altitude, summitLat, summitLon, season, type_, grade, distance, duration, elevationGain, gpxFile, project, activityUrl] = cToO;
         let nameStripped = (name || '').trim();
         const projectStripped = (project || '').trim();
         const gpxFileStripped = (gpxFile || '').trim();
@@ -151,17 +151,18 @@ function processSheetToSummitsRows(sheetCsvText) {
 
         const sameActivity = !isToDo && lastActivity != null && gpxFileStripped && gpxFileStripped === lastActivity[0];
         if (sameActivity) {
-            const [, lastSeason, lastType, lastGrade, lastDistance, lastDuration, lastElevationGain] = lastActivity;
+            const [, lastSeason, lastType, lastGrade, lastDistance, lastDuration, lastElevationGain, , lastActivityUrl] = lastActivity;
             if (!seasonStripped) { season = lastSeason; seasonStripped = season; }
             if (!(type_ || '').trim()) type_ = lastType;
             if (!(grade || '').trim()) grade = lastGrade;
             if (!(distance || '').trim()) distance = lastDistance;
             if (!(duration || '').trim()) duration = lastDuration;
             if (!(elevationGain || '').trim()) elevationGain = lastElevationGain;
+            if (!(activityUrl || '').trim()) activityUrl = lastActivityUrl;
         }
 
         if (gpxFileStripped && !isToDo) {
-            lastActivity = [gpxFileStripped, (season || '').trim(), (type_ || '').trim(), (grade || '').trim(), (distance || '').trim(), (duration || '').trim(), (elevationGain || '').trim()];
+            lastActivity = [gpxFileStripped, (season || '').trim(), (type_ || '').trim(), (grade || '').trim(), (distance || '').trim(), (duration || '').trim(), (elevationGain || '').trim(), (project || '').trim(), (activityUrl || '').trim()];
         }
 
         altitude = normalizeDecimal(altitude);
@@ -171,9 +172,9 @@ function processSheetToSummitsRows(sheetCsvText) {
         duration = normalizeDecimal(duration);
         elevationGain = normalizeDecimal(elevationGain);
 
-        let outSeason, outType, outGrade, outDistance, outDuration, outElevationGain, outGpxFile;
+        let outSeason, outType, outGrade, outDistance, outDuration, outElevationGain, outGpxFile, outActivityUrl;
         if (isToDo) {
-            outSeason = outType = outGrade = outDistance = outDuration = outElevationGain = outGpxFile = '';
+            outSeason = outType = outGrade = outDistance = outDuration = outElevationGain = outGpxFile = outActivityUrl = '';
         } else {
             outSeason = (season || '').trim();
             outType = (type_ || '').trim();
@@ -182,29 +183,47 @@ function processSheetToSummitsRows(sheetCsvText) {
             outDuration = duration;
             outElevationGain = elevationGain;
             outGpxFile = gpxFileStripped;
+            outActivityUrl = (activityUrl || '').trim();
         }
 
         const escapeCsv = (v) => (v == null ? '' : String(v).includes(',') ? '"' + String(v).replace(/"/g, '""') + '"' : String(v));
-        outRows.push([(status || '').trim(), nameStripped, altitude, summitLat, summitLon, outSeason, outType, outGrade, outDistance, outDuration, outElevationGain, outGpxFile, projectStripped || 'No Project'].map(escapeCsv).join(','));
+        outRows.push([(status || '').trim(), nameStripped, altitude, summitLat, summitLon, outSeason, outType, outGrade, outDistance, outDuration, outElevationGain, outGpxFile, projectStripped || 'No Project', outActivityUrl].map(escapeCsv).join(','));
         lastSummit = [nameStripped, altitude, summitLat, summitLon];
     }
 
     return header + '\n' + outRows.join('\n');
 }
 
+// Returns display text for column P link, or null if URL should be skipped.
+function getActivityLinkText(url) {
+    const u = (url || '').trim();
+    if (!u) return null;
+    const lower = u.toLowerCase();
+    if (lower.includes('strava')) return 'Strava activity';
+    if (lower.includes('komoot')) return 'Komoot route';
+    return null;
+}
+
 // Build popup HTML once for track layers (used by both visible and invisible layers)
-function buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType) {
+function buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType, activityUrl) {
     let html = `<b>${gpxName}</b><br><b>Season:</b> ${season}`;
     if (dataType !== 'bike') html += `<br><b>Type:</b> ${type}`;
     if (grade) html += `<br><b>Grade:</b> ${grade}`;
     if (distance) html += `<br><b>Distance:</b> ${distance} km`;
     if (duration) html += `<br><b>Duration:</b> ${duration}`;
     if (elevationGain) html += `<br><b>Elevation Gain:</b> ${elevationGain} m`;
+    const linkText = getActivityLinkText(activityUrl);
+    if (linkText) {
+        const href = (activityUrl || '').trim();
+        if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
+            html += `<br><a class="popup-activity-link" href="${href.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer">${linkText}</a>`;
+        }
+    }
     return html;
 }
 
 // Function to load GeoJSON files dynamically
-function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, elevationGain, gpxName, dataType) {
+function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, elevationGain, gpxName, dataType, activityUrl) {
     const dataPath = dataType === 'bike' ? 'data/bike/processed/' : 'data/processed/';
     const gpxBaseName = normalizeGpxBaseName(gpxFile);
     if (!gpxBaseName) return;
@@ -213,7 +232,7 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
         return; // Skip if the file has already been loaded
     }
 
-    const popupContent = buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType);
+    const popupContent = buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType, activityUrl);
 
     fetch(`${dataPath}${gpxBaseName}.geojson`)
         .then(response => {
@@ -352,6 +371,7 @@ function loadData() {
                 let elevationGain = (columns[nameIdx + 9] || '').trim();
                 let gpxFileRaw = (columns[nameIdx + 10] || '').trim();
                 let project = (columns[nameIdx + 11] || 'No Project').trim();
+                let activityUrl = (columns[nameIdx + 12] || '').trim();
 
                 // Inherit activity data from previous row when this row has summit but empty activity (merged cells in sheet).
                 if (lastActivity && !gpxFileRaw && !season) {
@@ -363,6 +383,7 @@ function loadData() {
                     elevationGain = lastActivity.elevationGain;
                     gpxFileRaw = lastActivity.gpxFile;
                     project = lastActivity.project || 'No Project';
+                    activityUrl = lastActivity.activityUrl || activityUrl;
                 } else if (gpxFileRaw || season) {
                     lastActivity = {
                         season,
@@ -372,7 +393,8 @@ function loadData() {
                         duration,
                         elevationGain,
                         gpxFile: normalizeGpxBaseName(gpxFileRaw),
-                        project
+                        project,
+                        activityUrl
                     };
                 }
 
@@ -466,7 +488,8 @@ function loadData() {
                         formattedDuration,
                         elevationGain,
                         gpxName,
-                        currentTab
+                        currentTab,
+                        activityUrl
                     );
                 }
 
