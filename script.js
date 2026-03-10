@@ -126,15 +126,16 @@ function normalizeDecimal(value) {
 function processSheetToSummitsRows(sheetCsvText) {
     const lines = sheetCsvText.split(/\r?\n/).filter(l => l.length > 0);
     const dataLines = lines.slice(3); // skip rows 1–3
-    const header = 'Status,Name,Altitude [m],Summit Latitude,Summit Longitude,Season,Type,Grade,Distance [km],Duration [h],Elevation Gain [m],GPX File,Project,Activity URL';
+    const header = 'Status,Name,Altitude [m],Summit Latitude,Summit Longitude,Season,Type,Grade,Distance [km],Duration [h],Elevation Gain [m],GPX File,Project,Activity URL,Photo URLs';
     let lastActivity = null;
     let lastSummit = null;
     const outRows = [];
 
     for (let i = 0; i < dataLines.length; i++) {
         let row = parseCsvLine(dataLines[i]);
-        if (row.length < 16) row = row.concat(Array(16 - row.length).fill(''));
+        if (row.length < 19) row = row.concat(Array(19 - row.length).fill(''));
         const cToO = row.slice(2, 16);
+        let photoUrls = (row[18] || '').trim();  // column S
         let [status, name, altitude, summitLat, summitLon, season, type_, grade, distance, duration, elevationGain, gpxFile, project, activityUrl] = cToO;
         let nameStripped = (name || '').trim();
         const projectStripped = (project || '').trim();
@@ -151,7 +152,7 @@ function processSheetToSummitsRows(sheetCsvText) {
 
         const sameActivity = !isToDo && lastActivity != null && gpxFileStripped && gpxFileStripped === lastActivity[0];
         if (sameActivity) {
-            const [, lastSeason, lastType, lastGrade, lastDistance, lastDuration, lastElevationGain, , lastActivityUrl] = lastActivity;
+            const [, lastSeason, lastType, lastGrade, lastDistance, lastDuration, lastElevationGain, , lastActivityUrl, lastPhotoUrls] = lastActivity;
             if (!seasonStripped) { season = lastSeason; seasonStripped = season; }
             if (!(type_ || '').trim()) type_ = lastType;
             if (!(grade || '').trim()) grade = lastGrade;
@@ -159,10 +160,11 @@ function processSheetToSummitsRows(sheetCsvText) {
             if (!(duration || '').trim()) duration = lastDuration;
             if (!(elevationGain || '').trim()) elevationGain = lastElevationGain;
             if (!(activityUrl || '').trim()) activityUrl = lastActivityUrl;
+            if (!photoUrls) photoUrls = lastPhotoUrls || '';
         }
 
         if (gpxFileStripped && !isToDo) {
-            lastActivity = [gpxFileStripped, (season || '').trim(), (type_ || '').trim(), (grade || '').trim(), (distance || '').trim(), (duration || '').trim(), (elevationGain || '').trim(), (project || '').trim(), (activityUrl || '').trim()];
+            lastActivity = [gpxFileStripped, (season || '').trim(), (type_ || '').trim(), (grade || '').trim(), (distance || '').trim(), (duration || '').trim(), (elevationGain || '').trim(), (project || '').trim(), (activityUrl || '').trim(), photoUrls];
         }
 
         altitude = normalizeDecimal(altitude);
@@ -172,9 +174,9 @@ function processSheetToSummitsRows(sheetCsvText) {
         duration = normalizeDecimal(duration);
         elevationGain = normalizeDecimal(elevationGain);
 
-        let outSeason, outType, outGrade, outDistance, outDuration, outElevationGain, outGpxFile, outActivityUrl;
+        let outSeason, outType, outGrade, outDistance, outDuration, outElevationGain, outGpxFile, outActivityUrl, outPhotoUrls;
         if (isToDo) {
-            outSeason = outType = outGrade = outDistance = outDuration = outElevationGain = outGpxFile = outActivityUrl = '';
+            outSeason = outType = outGrade = outDistance = outDuration = outElevationGain = outGpxFile = outActivityUrl = outPhotoUrls = '';
         } else {
             outSeason = (season || '').trim();
             outType = (type_ || '').trim();
@@ -184,14 +186,22 @@ function processSheetToSummitsRows(sheetCsvText) {
             outElevationGain = elevationGain;
             outGpxFile = gpxFileStripped;
             outActivityUrl = (activityUrl || '').trim();
+            outPhotoUrls = photoUrls;
         }
 
         const escapeCsv = (v) => (v == null ? '' : String(v).includes(',') ? '"' + String(v).replace(/"/g, '""') + '"' : String(v));
-        outRows.push([(status || '').trim(), nameStripped, altitude, summitLat, summitLon, outSeason, outType, outGrade, outDistance, outDuration, outElevationGain, outGpxFile, projectStripped || 'No Project', outActivityUrl].map(escapeCsv).join(','));
+        outRows.push([(status || '').trim(), nameStripped, altitude, summitLat, summitLon, outSeason, outType, outGrade, outDistance, outDuration, outElevationGain, outGpxFile, projectStripped || 'No Project', outActivityUrl, outPhotoUrls].map(escapeCsv).join(','));
         lastSummit = [nameStripped, altitude, summitLat, summitLon];
     }
 
     return header + '\n' + outRows.join('\n');
+}
+
+// Parse column S: "url1|url2", "none", or empty. Returns array of valid URLs (http/https); empty if none.
+function parsePhotoUrlsFromColumnS(value) {
+    const raw = (value || '').trim();
+    if (!raw || raw.toLowerCase() === 'none') return [];
+    return raw.split('|').map(s => (s || '').trim()).filter(s => s && (s.startsWith('http://') || s.startsWith('https://')));
 }
 
 // Returns display text for column P link, or null if URL should be skipped.
@@ -205,7 +215,7 @@ function getActivityLinkText(url) {
 }
 
 // Build popup HTML once for track layers (used by both visible and invisible layers)
-function buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType, activityUrl) {
+function buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType, activityUrl, photoUrlsColumnS) {
     let html = `<b>${gpxName}</b><br><b>Season:</b> ${season}`;
     if (dataType !== 'bike') html += `<br><b>Type:</b> ${type}`;
     if (grade) html += `<br><b>Grade:</b> ${grade}`;
@@ -219,11 +229,16 @@ function buildTrackPopupContent(gpxName, season, type, grade, distance, duration
             html += `<br><a class="popup-activity-link" href="${href.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer">${linkText}</a>`;
         }
     }
+    const photoUrls = parsePhotoUrlsFromColumnS(photoUrlsColumnS);
+    if (photoUrls.length > 0) {
+        const escaped = photoUrls.map(u => u.replace(/"/g, '&quot;')).join('|');
+        html += `<br><span class="popup-photos-row" data-photo-urls="${escaped}"><button type="button" class="popup-photos-btn" aria-label="View photos">🖼️</button></span>`;
+    }
     return html;
 }
 
 // Function to load GeoJSON files dynamically
-function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, elevationGain, gpxName, dataType, activityUrl) {
+function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, elevationGain, gpxName, dataType, activityUrl, photoUrlsColumnS) {
     const dataPath = dataType === 'bike' ? 'data/bike/processed/' : 'data/processed/';
     const gpxBaseName = normalizeGpxBaseName(gpxFile);
     if (!gpxBaseName) return;
@@ -232,7 +247,7 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
         return; // Skip if the file has already been loaded
     }
 
-    const popupContent = buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType, activityUrl);
+    const popupContent = buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType, activityUrl, photoUrlsColumnS || '');
 
     fetch(`${dataPath}${gpxBaseName}.geojson`)
         .then(response => {
@@ -372,6 +387,7 @@ function loadData() {
                 let gpxFileRaw = (columns[nameIdx + 10] || '').trim();
                 let project = (columns[nameIdx + 11] || 'No Project').trim();
                 let activityUrl = (columns[nameIdx + 12] || '').trim();
+                let photoUrls = (columns.length > nameIdx + 13) ? (columns[nameIdx + 13] || '').trim() : '';
 
                 // Inherit activity data from previous row when this row has summit but empty activity (merged cells in sheet).
                 if (lastActivity && !gpxFileRaw && !season) {
@@ -384,6 +400,7 @@ function loadData() {
                     gpxFileRaw = lastActivity.gpxFile;
                     project = lastActivity.project || 'No Project';
                     activityUrl = lastActivity.activityUrl || activityUrl;
+                    if (!photoUrls) photoUrls = lastActivity.photoUrls || '';
                 } else if (gpxFileRaw || season) {
                     lastActivity = {
                         season,
@@ -394,7 +411,8 @@ function loadData() {
                         elevationGain,
                         gpxFile: normalizeGpxBaseName(gpxFileRaw),
                         project,
-                        activityUrl
+                        activityUrl,
+                        photoUrls
                     };
                 }
 
@@ -489,7 +507,8 @@ function loadData() {
                         elevationGain,
                         gpxName,
                         currentTab,
-                        activityUrl
+                        activityUrl,
+                        photoUrls
                     );
                 }
 
@@ -659,6 +678,47 @@ if (downloadCsvBtn) {
             });
     });
 }
+
+// PhotoSwipe 5 lightbox for popup photos (initialized after DOM ready; popup is in DOM when user clicks photo button)
+let photoSwipeLightbox = null;
+const PHOTOSWIPE_DEFAULT_WIDTH = 2048;
+const PHOTOSWIPE_DEFAULT_HEIGHT = 1536;
+
+function initPhotoSwipeLightbox() {
+    if (typeof PhotoSwipeLightbox === 'undefined' || typeof PhotoSwipe === 'undefined') return;
+    if (photoSwipeLightbox) return;
+    window._pswpPhotoUrls = [];
+    photoSwipeLightbox = new PhotoSwipeLightbox({
+        pswpModule: PhotoSwipe,
+        showHideAnimationType: 'none'
+    });
+    photoSwipeLightbox.addFilter('numItems', function() {
+        return (window._pswpPhotoUrls && window._pswpPhotoUrls.length) || 0;
+    });
+    photoSwipeLightbox.addFilter('itemData', function(itemData, index) {
+        return {
+            src: window._pswpPhotoUrls[index],
+            width: PHOTOSWIPE_DEFAULT_WIDTH,
+            height: PHOTOSWIPE_DEFAULT_HEIGHT
+        };
+    });
+    photoSwipeLightbox.init();
+}
+
+document.body.addEventListener('click', function(e) {
+    const btn = e.target.closest('.popup-photos-btn');
+    if (!btn) return;
+    const row = btn.closest('[data-photo-urls]');
+    if (!row) return;
+    const urlsAttr = row.getAttribute('data-photo-urls');
+    if (!urlsAttr) return;
+    const urls = urlsAttr.split('|').map(s => (s || '').trim()).filter(s => s && (s.startsWith('http://') || s.startsWith('https://')));
+    if (urls.length === 0) return;
+    if (!photoSwipeLightbox) initPhotoSwipeLightbox();
+    if (!photoSwipeLightbox) return;
+    window._pswpPhotoUrls = urls;
+    photoSwipeLightbox.loadAndOpen(0);
+});
 
 // Initialize the app
 document.addEventListener('DOMContentLoaded', function() {

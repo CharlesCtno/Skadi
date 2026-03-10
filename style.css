@@ -1,0 +1,28 @@
+/* Popup photo button (map track popups) */
+.popup-photos-row {
+  display: inline-block;
+  margin-top: 6px;
+}
+
+.popup-photos-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  background: #45818e;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.popup-photos-btn:hover {
+  background: #80c2d1;
+}
+
+.popup-photos-btn:focus {
+  outline: 2px solid #80c2d1;
+  outline-offset: 2px;
+}
