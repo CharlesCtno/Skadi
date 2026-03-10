@@ -762,14 +762,13 @@ def main() -> None:
             continue
         if activity.start_date_epoch == after_epoch and activity.activity_id <= after_activity_id:
             continue
-        if _normalize_activity_type(activity.type) != "hike":
+        if (not is_manual_mode) and _normalize_activity_type(activity.type) != "hike":
             print(
                 f"Skipping activity id={activity.activity_id} "
                 f"name='{activity.name}' type='{activity.type}' (only Hike is synced)."
             )
-            if not is_manual_mode:
-                last_epoch = max(last_epoch, activity.start_date_epoch)
-                last_activity_id = max(last_activity_id, activity.activity_id)
+            last_epoch = max(last_epoch, activity.start_date_epoch)
+            last_activity_id = max(last_activity_id, activity.activity_id)
             continue
 
         out_dir = SUMMITS_RAW_DIR
