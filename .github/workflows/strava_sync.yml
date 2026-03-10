@@ -54,19 +54,35 @@ jobs:
 
       - name: Convert only new GPX to GeoJSON
         run: |
-          mapfile -t GPX_FILES < <(
-            git diff --name-only --diff-filter=AM -- data/raw/ data/bike/raw/ |
-            while read -r f; do
-              case "$f" in
-                *.gpx) echo "$f" ;;
-              esac
-            done
-          )
+          # Convert:
+          # 1) GPX files added/modified in this run
+          # 2) GPX files whose expected GeoJSON output is missing
+          declare -A TO_CONVERT=()
+
+          while IFS= read -r f; do
+            case "$f" in
+              *.gpx) TO_CONVERT["$f"]=1 ;;
+            esac
+          done < <(git diff --name-only --diff-filter=AM -- data/raw/ data/bike/raw/)
+
+          for gpx in data/raw/*.gpx data/bike/raw/*.gpx; do
+            [ -f "$gpx" ] || continue
+            if [[ "$gpx" == data/bike/raw/* ]]; then
+              expected="data/bike/processed/$(basename "${gpx%.gpx}").geojson"
+            else
+              expected="data/processed/$(basename "${gpx%.gpx}").geojson"
+            fi
+            if [ ! -f "$expected" ]; then
+              TO_CONVERT["$gpx"]=1
+            fi
+          done
+
+          GPX_FILES=("${!TO_CONVERT[@]}")
           if [ "${#GPX_FILES[@]}" -eq 0 ]; then
-            echo "No new GPX files to convert."
+            echo "No GPX files need conversion."
             exit 0
           fi
-          echo "Converting ${#GPX_FILES[@]} new GPX file(s):"
+          echo "Converting ${#GPX_FILES[@]} GPX file(s):"
           printf ' - %s\n' "${GPX_FILES[@]}"
           python scripts/convert_gpx.py "${GPX_FILES[@]}"
 
