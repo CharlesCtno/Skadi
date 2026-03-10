@@ -700,6 +700,7 @@ def main() -> None:
     sheet_name = _required_env("GOOGLE_SHEETS_TAB_NAME")
     sa_json = _optional_env("GOOGLE_SERVICE_ACCOUNT_JSON")
     manual_activity_name = (args.activity_name or _optional_env("ACTIVITY_NAME")).strip()
+    is_manual_mode = bool(manual_activity_name)
 
     access_token = get_strava_access_token(client_id, client_secret, refresh_token)
     state_exists = STATE_PATH.exists()
@@ -707,7 +708,7 @@ def main() -> None:
     after_epoch = state["last_synced_epoch"]
     after_activity_id = state["last_synced_activity_id"]
 
-    if manual_activity_name:
+    if is_manual_mode:
         print(f"Manual sync mode: searching exact activity name '{manual_activity_name}' across all Strava pages.")
         matched = find_activity_by_exact_name(access_token, manual_activity_name)
         if matched is None:
@@ -766,8 +767,9 @@ def main() -> None:
                 f"Skipping activity id={activity.activity_id} "
                 f"name='{activity.name}' type='{activity.type}' (only Hike is synced)."
             )
-            last_epoch = max(last_epoch, activity.start_date_epoch)
-            last_activity_id = max(last_activity_id, activity.activity_id)
+            if not is_manual_mode:
+                last_epoch = max(last_epoch, activity.start_date_epoch)
+                last_activity_id = max(last_activity_id, activity.activity_id)
             continue
 
         out_dir = SUMMITS_RAW_DIR
@@ -786,8 +788,9 @@ def main() -> None:
                     f"Skipping activity id={activity.activity_id} name='{activity.name}': "
                     f"GPX export unavailable (HTTP {status})."
                 )
-                last_epoch = max(last_epoch, activity.start_date_epoch)
-                last_activity_id = max(last_activity_id, activity.activity_id)
+                if not is_manual_mode:
+                    last_epoch = max(last_epoch, activity.start_date_epoch)
+                    last_activity_id = max(last_activity_id, activity.activity_id)
                 continue
             raise
         gpx_rel_path.write_bytes(gpx_bytes)
