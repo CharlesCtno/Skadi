@@ -21,14 +21,15 @@ STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token"
 STRAVA_ACTIVITIES_URL = "https://www.strava.com/api/v3/athlete/activities"
 STRAVA_EXPORT_GPX_URL = "https://www.strava.com/api/v3/activities/{activity_id}/export_gpx"
 STRAVA_STREAMS_URL = "https://www.strava.com/api/v3/activities/{activity_id}/streams"
+STRAVA_PHOTOS_URL = "https://www.strava.com/api/v3/activities/{activity_id}/photos"
 NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 
 STATE_PATH = Path("data/strava_last_sync.json")
 SUMMITS_RAW_DIR = Path("data/raw")
 BIKE_RAW_DIR = Path("data/bike/raw")
 
-# Read through P so we can conditionally write the Strava activity URL.
-SHEET_RANGE = "A:P"
+# Read through S for photo URLs in column S.
+SHEET_RANGE = "A:S"
 
 BIKE_TYPES = {
     "Ride",
@@ -153,6 +154,40 @@ def get_strava_access_token(client_id: str, client_secret: str, refresh_token: s
     if not token:
         raise RuntimeError("Strava token exchange did not return access_token")
     return token
+
+
+def fetch_activity_photo_urls(access_token: str, activity_id: int) -> List[str]:
+    """
+    GET /activities/{id}/photos?size=2048&photo_sources=true.
+    Returns list of photo URLs (prefer size 2048, else largest available).
+    """
+    url = STRAVA_PHOTOS_URL.format(activity_id=activity_id)
+    params = {"size": 2048, "photo_sources": "true"}
+    headers = {"Authorization": f"Bearer {access_token}"}
+    resp = requests.get(url, params=params, headers=headers, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+    if not isinstance(data, list):
+        return []
+    urls = []
+    for photo in data:
+        u = photo.get("urls") if isinstance(photo, dict) else None
+        if not isinstance(u, dict):
+            continue
+        if "2048" in u and u["2048"]:
+            urls.append(str(u["2048"]).strip())
+            continue
+        size_keys = [k for k in u if isinstance(k, str) and k.isdigit()]
+        if not size_keys:
+            for v in u.values():
+                if v and isinstance(v, str):
+                    urls.append(v.strip())
+                    break
+            continue
+        best = max(size_keys, key=int)
+        if u.get(best):
+            urls.append(str(u[best]).strip())
+    return urls
 
 
 def load_state() -> Dict[str, int]:
@@ -532,6 +567,10 @@ def get_sheet_id(sheets_service, spreadsheet_id: str, sheet_name: str) -> int:
     return int(target_sheet["properties"]["sheetId"])
 
 
+# Column S = photo URLs (0-based index 18).
+COL_S_IDX = 18
+
+
 def update_existing_row_auto_fields(
     sheets_service,
     spreadsheet_id: str,
@@ -548,6 +587,7 @@ def update_existing_row_auto_fields(
     elevation_gain_m: str,
     gpx_file: str,
     activity_url: str,
+    photo_urls_value: Optional[str] = None,
 ) -> None:
     sheet_type = sheet_type_from_strava_activity_type(strava_activity_type)
     data = [
@@ -571,6 +611,9 @@ def update_existing_row_auto_fields(
     # Do not overwrite P (Strava URL) if already filled.
     if not _row_cell(existing_row, 15) and activity_url:
         data.append({"range": f"{sheet_name}!P{row_1}", "values": [[activity_url]]})
+    # Do not overwrite S (photo URLs) if already filled.
+    if photo_urls_value is not None and not _row_cell(existing_row, COL_S_IDX):
+        data.append({"range": f"{sheet_name}!S{row_1}", "values": [[photo_urls_value]]})
 
     for item in data:
         try:
@@ -619,7 +662,7 @@ def insert_new_row_at(
         },
     ).execute()
 
-    target_range = f"{sheet_name}!A{insert_row_1}:P{insert_row_1}"
+    target_range = f"{sheet_name}!A{insert_row_1}:S{insert_row_1}"
     sheets_service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
         range=target_range,
@@ -649,12 +692,26 @@ def upsert_activity_summits_to_sheet(
     activity_url: str,
     start_lat: Optional[float],
     start_lon: Optional[float],
+    access_token: Optional[str] = None,
+    activity_id: Optional[int] = None,
+    photo_urls_value: Optional[str] = None,
 ) -> Dict[str, int]:
     """
     Upsert all summit names extracted from activity_title.
-    - Match by column D (case-insensitive) -> update K-N.
+    - Match by column D (case-insensitive) -> update K-N and P, S when empty.
     - If no match -> insert immediately below closest existing row with valid F/G.
     """
+    if photo_urls_value is None and access_token and activity_id is not None:
+        try:
+            urls = fetch_activity_photo_urls(access_token, activity_id)
+            photo_urls_value = "|".join(urls) if urls else "none"
+        except requests.RequestException as e:
+            print(f"WARNING: Could not fetch photos for activity {activity_id}: {e}. Writing 'none' to column S.")
+            photo_urls_value = "none"
+        time.sleep(1)
+    if photo_urls_value is None:
+        photo_urls_value = "none"
+
     range_name = f"{sheet_name}!{SHEET_RANGE}"
     values_resp = sheets_service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id,
@@ -687,9 +744,10 @@ def upsert_activity_summits_to_sheet(
                 elevation_gain_m=elevation_gain_m,
                 gpx_file=gpx_file_value,
                 activity_url=activity_url,
+                photo_urls_value=photo_urls_value,
             )
             row = existing_row
-            while len(row) < 16:
+            while len(row) < 19:
                 row.append("")
             if _row_cell(row, 2).lower() == "to do":
                 row[2] = ""  # C
@@ -709,6 +767,8 @@ def upsert_activity_summits_to_sheet(
             row[13] = gpx_file_value  # N
             if not _row_cell(row, 15) and activity_url:
                 row[15] = activity_url  # P
+            if not _row_cell(row, COL_S_IDX):
+                row[COL_S_IDX] = photo_urls_value  # S
             matched += 1
             print(
                 f"MATCHED summit '{summit_name}' -> row {match_row_1}. "
@@ -726,8 +786,8 @@ def upsert_activity_summits_to_sheet(
             insert_row_1 = len(values) + 1
             print('WARNING: No existing coordinates found in sheet — appended at bottom')
 
-        # A..P: D, H, K-N and P are auto-filled; E/F/G come from OSM when available.
-        # I/J and O stay blank by design.
+        # A..S: D, H, K-N, P and S are auto-filled; E/F/G come from OSM when available.
+        # I/J, O, Q, R stay blank by design.
         sheet_type = sheet_type_from_strava_activity_type(strava_activity_type)
         new_row = [
             "",  # A
@@ -746,6 +806,9 @@ def upsert_activity_summits_to_sheet(
             gpx_file_value,  # N
             "",  # O
             activity_url,  # P
+            "",  # Q
+            "",  # R
+            photo_urls_value,  # S
         ]
         insert_new_row_at(
             sheets_service=sheets_service,
@@ -930,6 +993,8 @@ def main() -> None:
             activity_url=activity_url,
             start_lat=lat,
             start_lon=lon,
+            access_token=access_token,
+            activity_id=activity.activity_id,
         )
 
         synced += 1

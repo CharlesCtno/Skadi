@@ -50,6 +50,10 @@ def main() -> None:
 
     # Sheet stores GPX filename with extension in column N.
     gpx_file_value = gpx_filename
+    # Hardcoded test photo URL for column S (no Strava API call).
+    test_photo_urls = (
+        "https://dgtzuqphqg23d.cloudfront.net/MAervFZjn_Q3Vzix8OzeOXUvKbYnGfPCH_LQH-tL_1o-2048x1536.jpg"
+    )
     result = upsert_activity_summits_to_sheet(
         sheets_service=sheets_service,
         spreadsheet_id=spreadsheet_id,
@@ -65,6 +69,7 @@ def main() -> None:
         activity_url=activity_url,
         start_lat=start_lat,
         start_lon=start_lon,
+        photo_urls_value=test_photo_urls,
     )
 
     print(
