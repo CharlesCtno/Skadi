@@ -1,28 +1,26 @@
-/* Popup photo button (map track popups) */
+/* Popup photo icon (same line as activity name, icon only) */
 .popup-photos-row {
-  display: inline-block;
-  margin-top: 6px;
+  display: inline;
+  margin-left: 0.35em;
 }
 
 .popup-photos-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 5px 10px;
-  background: #45818e;
-  color: white;
+  display: inline;
+  padding: 0;
+  margin: 0;
+  background: none;
   border: none;
-  border-radius: 4px;
   cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
+  font-size: 1.3em;
+  line-height: inherit;
+  vertical-align: baseline;
 }
 
 .popup-photos-btn:hover {
-  background: #80c2d1;
+  opacity: 0.8;
 }
 
 .popup-photos-btn:focus {
-  outline: 2px solid #80c2d1;
-  outline-offset: 2px;
+  outline: 1px dotted currentColor;
+  outline-offset: 1px;
 }

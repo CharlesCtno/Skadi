@@ -216,7 +216,12 @@ function getActivityLinkText(url) {
 
 // Build popup HTML once for track layers (used by both visible and invisible layers)
 function buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType, activityUrl, photoUrlsColumnS) {
-    let html = `<b>${gpxName}</b><br><b>Season:</b> ${season}`;
+    const photoUrls = parsePhotoUrlsFromColumnS(photoUrlsColumnS);
+    const hasPhotos = photoUrls.length > 0;
+    const photoBlock = hasPhotos
+        ? (() => { const escaped = photoUrls.map(u => u.replace(/"/g, '&quot;')).join('|'); return ` <span class="popup-photos-row" data-photo-urls="${escaped}"><button type="button" class="popup-photos-btn" aria-label="View photos">📸</button></span>`; })()
+        : '';
+    let html = `<b>${gpxName}</b>${photoBlock}<br><b>Season:</b> ${season}`;
     if (dataType !== 'bike') html += `<br><b>Type:</b> ${type}`;
     if (grade) html += `<br><b>Grade:</b> ${grade}`;
     if (distance) html += `<br><b>Distance:</b> ${distance} km`;
@@ -228,11 +233,6 @@ function buildTrackPopupContent(gpxName, season, type, grade, distance, duration
         if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
             html += `<br><a class="popup-activity-link" href="${href.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer">${linkText}</a>`;
         }
-    }
-    const photoUrls = parsePhotoUrlsFromColumnS(photoUrlsColumnS);
-    if (photoUrls.length > 0) {
-        const escaped = photoUrls.map(u => u.replace(/"/g, '&quot;')).join('|');
-        html += `<br><span class="popup-photos-row" data-photo-urls="${escaped}"><button type="button" class="popup-photos-btn" aria-label="View photos">🖼️</button></span>`;
     }
     return html;
 }
@@ -705,6 +705,7 @@ function initPhotoSwipeLightbox() {
     photoSwipeLightbox.init();
 }
 
+// Use capture phase so we receive the click before Leaflet's popup stops propagation
 document.body.addEventListener('click', function(e) {
     const btn = e.target.closest('.popup-photos-btn');
     if (!btn) return;
@@ -714,11 +715,13 @@ document.body.addEventListener('click', function(e) {
     if (!urlsAttr) return;
     const urls = urlsAttr.split('|').map(s => (s || '').trim()).filter(s => s && (s.startsWith('http://') || s.startsWith('https://')));
     if (urls.length === 0) return;
+    e.preventDefault();
+    e.stopPropagation();
     if (!photoSwipeLightbox) initPhotoSwipeLightbox();
     if (!photoSwipeLightbox) return;
     window._pswpPhotoUrls = urls;
     photoSwipeLightbox.loadAndOpen(0);
-});
+}, true);
 
 // Initialize the app
 document.addEventListener('DOMContentLoaded', function() {
