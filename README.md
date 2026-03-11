@@ -1,91 +1,71 @@
 # Skadi
 
-Static web app to visualize mountain and bike activities on a Leaflet map using Google Sheets (published CSV) + GeoJSON tracks.
+A static web app for visualizing mountain activities (hikes, ski, mountaineering, bike) on an interactive Leaflet map, using GeoJSON tracks and CSV activity lists.
 
 ## Live Site
 
 [https://charlesctno.github.io/Skadi](https://charlesctno.github.io/Skadi)
 
-## Architecture
+## Stack
 
-- **Frontend:** `index.html` + `script.js` (vanilla JS, no build step)
-- **Track data:** `data/raw/` and `data/bike/raw/` for GPX, `data/processed/` and `data/bike/processed/` for GeoJSON
-- **Activity metadata:** Google Sheets published as CSV (summits + bike tabs)
-- **Automation:** GitHub Actions + `scripts/strava_sync.py` + `scripts/convert_gpx.py`
+- **Frontend:** Single-page HTML + vanilla JS (`index.html`, `script.js`), Leaflet map, no build step
+- **Data:** Google Sheet (published CSV) as source of truth + GeoJSON track files
+- **Pipeline:** Strava → GitHub Actions → Google Sheet + GPX files → auto-converted to GeoJSON → site refreshes
+- **Hosting:** GitHub Pages
 
-## Current Data Flow
+## Data Flow
 
-1. Manual GitHub Action (`Strava Sync (Manual)`) is triggered with an exact Strava activity name.
-2. `scripts/strava_sync.py`:
-   - fetches activity from Strava (pagination supported for exact-name search),
-   - downloads GPX (export endpoint, with stream fallback),
-   - stores GPX in `data/raw/` or `data/bike/raw/`,
-   - updates Google Sheet rows (match existing summit names or insert new rows),
-   - updates sync cursor in `data/strava_last_sync.json`.
-3. Same workflow converts only newly imported GPX files to GeoJSON via `scripts/convert_gpx.py`.
-4. Workflow commits/pushes GPX + GeoJSON + state to `main`.
-5. Website fetches published CSV and loads matching GeoJSON files.
+**Summits tab** fetches the summits Google Sheet from a published CSV URL (see `SUMMITS_SHEET_CSV_URL` in `script.js`). Processing (columns C–O from row 4, inheritance, "to do" rows, multi-GPX summits) runs in the browser in `processSheetToSummitsRows()`. No local script needed: edit Sheet → refresh site.
 
-## Workflows
+**Bike tab** fetches CSV directly from a published Google Sheet URL (see `getCsvPath()` in `script.js`). Same column layout. Decimals must use dots (e.g. `132.3`).
 
-- `/.github/workflows/strava_sync.yml`
-  - Trigger: `workflow_dispatch`
-  - Input: `activity_name` (required, exact match)
-  - Auth: Google OIDC + Strava OAuth secrets
-  - Converts only newly added/modified GPX in current run
-  - Commits:
-    - `data/raw/`
-    - `data/bike/raw/`
-    - `data/processed/`
-    - `data/bike/processed/`
-    - `data/strava_last_sync.json`
+**Tracks:** For each row with a non-empty GPX File field (column N), the app loads the corresponding GeoJSON from `data/processed/` (summits) or `data/bike/processed/` (bike).
 
-- `/.github/workflows/convert-gpx.yml`
-  - Trigger: push affecting `data/raw/**/*.gpx` or `data/bike/raw/**/*.gpx`
-  - Use case: fallback/manual conversion path when GPX files are pushed directly
+## CSV Column Schema
 
-## Secrets Required (GitHub)
-
-- `STRAVA_CLIENT_ID`
-- `STRAVA_CLIENT_SECRET`
-- `STRAVA_REFRESH_TOKEN`
-- `GOOGLE_SHEETS_SPREADSHEET_ID`
-- `GOOGLE_SHEETS_TAB_NAME`
-- `GCP_WORKLOAD_IDENTITY_PROVIDER`
-- `GCP_SERVICE_ACCOUNT_EMAIL`
-
-## Google Sheet / CSV Schema (frontend)
-
-| # | Field |
-|---|-------|
-| 0 | Name |
-| 1 | Altitude |
-| 2-3 | Summit Lat/Lon |
-| 4 | Season |
-| 5 | Type |
-| 6 | Grade |
-| 7 | Distance |
-| 8 | Duration |
-| 9 | Elevation Gain |
-| 10 | GPX File |
-| 11 | Project |
-
-## Frontend Notes
-
-- Summits tab CSV is fetched from `SUMMITS_SHEET_CSV_URL` in `script.js`.
-- Bike tab CSV URL is returned by `getCsvPath()` in `script.js`.
-- Summits sheet preprocessing is done client-side in `processSheetToSummitsRows()`.
-- GPX file values are normalized in `script.js`, so `Monts_Telliers`, `Monts_Telliers.gpx`, or `Monts_Telliers.geojson` all resolve to `Monts_Telliers.geojson`.
+| # | Field | Source |
+|---|-------|--------|
+| C | Status (to do / empty) | Manual, auto-cleared on Strava sync |
+| D | Name | Strava activity title |
+| E | Altitude | OpenStreetMap Nominatim (auto) |
+| F | Summit Latitude | OpenStreetMap Nominatim (auto) |
+| G | Summit Longitude | OpenStreetMap Nominatim (auto) |
+| H | Season | Derived from activity date (auto) |
+| I | Type (Hike / Ski / etc.) | Derived from Strava activity type (auto) |
+| J | Grade | Manual |
+| K | Distance | Strava (auto) |
+| L | Duration | Strava (auto) |
+| M | Elevation Gain | Strava (auto) |
+| N | GPX File | Derived from activity name (auto) |
+| P | Strava / Komoot URL | Strava (auto) or manual |
+| S | Photo URLs (pipe-separated) | Strava photos API (auto) |
+| T | Google Doc URL (journal) | Manual |
 
 ## Key Files
 
-- `index.html`: map container and UI
-- `script.js`: CSV parsing, marker rendering, track loading/filter/search
-- `scripts/strava_sync.py`: Strava + Sheets sync logic
-- `scripts/convert_gpx.py`: GPX to GeoJSON conversion
-- `scripts/test_sheet_sync.py`: optional local test helper for sheet insertion/update logic
+- `index.html` – Map container, tabs (Summits / Bike), filters (status, season, type), search
+- `script.js` – Map init, CSV parsing, markers, track layers, filters, search, photo lightbox
+- `scripts/strava_sync.py` – Fetches a named Strava activity, updates Google Sheet, pushes GPX to repo
+- `scripts/strava_backfill_photos.py` – One-time backfill of photo URLs into column S for existing activities
+- `scripts/convert_gpx.py` – Converts GPX files to GeoJSON (run automatically via GitHub Actions)
+- `.github/workflows/strava_sync.yml` – Manual trigger workflow: input activity name, runs full sync
+- `.github/workflows/convert_gpx.yml` – Auto-triggered when GPX files are pushed to raw folders
 
-## Notes
+## Conventions
 
-- `scripts/export_sheet_to_csv.py` is no longer part of the main flow.
-- Decimals in source sheet data must use dots (`132.3`).
+- Project colors defined in `projectColors` in `script.js`; markers and bike tracks colored by Project, summit tracks by activity type
+- Bike rows may have empty Name/Altitude/Lat/Lon; tracks still load using GPX File field
+- Decimals must be dots in source data — no conversion happens in the frontend
+- GPX filename convention: activity name with spaces replaced by underscores + `.gpx` (e.g. `Mont_Telliers.gpx`)
+- Multi-summit activities use `&` as separator in the activity title (e.g. `Dent d'oche & Cornette de Bise`)
+
+## Roadmap
+
+- ~~Move pipeline fully to the browser~~ — Summits tab now processes the sheet directly in the browser ✓
+- ~~Strava sync via GitHub Actions~~ ✓
+- ~~OpenStreetMap auto-fill for altitude and coordinates~~ ✓
+- ~~Strava photo integration with lightbox viewer~~ ✓
+- Google Doc journal linked to each activity
+- Skadi chatbot (activity recommendations)
+- French/English language switcher
+- Immersive journal page with scrolling map (bike tab)

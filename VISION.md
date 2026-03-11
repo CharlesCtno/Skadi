@@ -113,4 +113,3 @@ Keywords extracted from journal bold text appear as visual tags on the journal p
 | ⏳ | Keyword extraction from Google Docs bold text |
 | ⏳ | French/English language switcher (flag toggle) |
 | ⏳ | Immersive journal page with scrolling map (bike tab) |
-| ⏳ | Garmin Connect integration (long term) |
