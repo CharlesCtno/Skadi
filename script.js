@@ -4,8 +4,8 @@ let markers = [];
 let tracks = [];
 let loadedGeoJSONFiles = {};
 let gpxNames = [];
+let gpxNameSet = new Set();
 let gpxNameToMarker = {};
-let gpxNameToTrack = {};
 let currentTab = 'summits';
 
 // Initialize map
@@ -256,6 +256,14 @@ function getActivityLinkText(url) {
     return null;
 }
 
+function buildSummitPopupContent(name, altitude, project, status) {
+    return `
+        <b>${name} ${altitude ? `(${altitude}m)` : ''}</b><br>
+        <b>Project:</b> ${project}<br>
+        <b>Status:</b> ${status}
+    `;
+}
+
 // Build popup HTML once for track layers (used by both visible and invisible layers)
 function buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType, activityUrl, photoUrlsColumnS) {
     const photoUrls = parsePhotoUrlsFromColumnS(photoUrlsColumnS);
@@ -388,8 +396,8 @@ function loadData() {
     tracks = [];
     loadedGeoJSONFiles = {};
     gpxNames = [];
+    gpxNameSet = new Set();
     gpxNameToMarker = {};
-    gpxNameToTrack = {};
 
     // Summits: fetch published sheet and apply same processing as export_sheet_to_csv.py in the browser. Bike: published sheet as-is.
     const csvPath = getCsvPath();
@@ -398,7 +406,8 @@ function loadData() {
         .then(csvText => {
             if (currentTab === 'summits') csvText = processSheetToSummitsRows(csvText);
             const rows = csvText.split(/\r?\n/).slice(1);
-            const summits = {};
+            const summitKeys = new Set();
+            const summitStateByKey = new Map();
             // When multiple summits share one activity, CSV export leaves activity columns empty for merged rows. Carry them over.
             let lastActivity = null;
 
@@ -494,19 +503,15 @@ function loadData() {
                         isCompleted = !!gpxFileCell;
                     }
 
-                    if (!summits[summitKey]) {
+                    if (!summitKeys.has(summitKey)) {
                         const projectColor = getProjectColor(project);
                         const summitIcon = createTriangleIcon(projectColor, isCompleted);
 
                         const marker = L.marker([summitLatitude, summitLongitude], { icon: summitIcon })
                             .addTo(map)
-                            .bindPopup(`
-                                <b>${name} ${altitude ? `(${altitude}m)` : ''}</b><br>
-                                <b>Project:</b> ${project}<br>
-                                <b>Status:</b> ${isCompleted ? 'completed' : 'to do'}
-                            `);
+                            .bindPopup(buildSummitPopupContent(name, altitude, project, isCompleted ? 'completed' : 'to do'));
 
-                        markers.push({
+                        const markerState = {
                             layer: marker,
                             type: type,
                             status: isCompleted ? 'completed' : 'to do',
@@ -514,15 +519,17 @@ function loadData() {
                             name: name,
                             summitKey: summitKey,
                             dataType: currentTab
-                        });
+                        };
+                        markers.push(markerState);
 
                         if (gpxName) {
                             gpxNameToMarker[gpxName] = marker;
                         }
 
-                        summits[summitKey] = true;
+                        summitKeys.add(summitKey);
+                        summitStateByKey.set(summitKey, markerState);
                     } else {
-                        const existing = markers.find(m => m.summitKey === summitKey && m.dataType === currentTab);
+                        const existing = summitStateByKey.get(summitKey);
                         if (existing) {
                             // Completed always wins if any row for this summit is completed.
                             const shouldBeCompleted = existing.status === 'completed' || isCompleted;
@@ -530,11 +537,7 @@ function loadData() {
                             if (existing.status !== nextStatus) {
                                 const projectColor = getProjectColor(project);
                                 existing.layer.setIcon(createTriangleIcon(projectColor, shouldBeCompleted));
-                                existing.layer.setPopupContent(`
-                                    <b>${name} ${altitude ? `(${altitude}m)` : ''}</b><br>
-                                    <b>Project:</b> ${project}<br>
-                                    <b>Status:</b> ${nextStatus}
-                                `);
+                                existing.layer.setPopupContent(buildSummitPopupContent(name, altitude, project, nextStatus));
                                 existing.status = nextStatus;
                             }
                         }
@@ -543,7 +546,8 @@ function loadData() {
 
                 // Load GeoJSON for every row that has a GPX file (same summit can have multiple tracks).
                 if (gpxFile && gpxName) {
-                    if (!gpxNames.includes(gpxName)) {
+                    if (!gpxNameSet.has(gpxName)) {
+                        gpxNameSet.add(gpxName);
                         gpxNames.push(gpxName);
                     }
                     const trackColor = currentTab === 'bike'
