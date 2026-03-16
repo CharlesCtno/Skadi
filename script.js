@@ -18,16 +18,22 @@ function initMap() {
 
 // Function to create a colored triangle icon with outline
 function createTriangleIcon(color, isCompleted) {
-    const outlineWidth = isCompleted ? '2' : '0.3';
+    const outlineWidth = '0.6';
+    const trianglePath = 'M10 2 L2 18 L18 18 Z';
+    const snowCapSvg = isCompleted
+        ? '<path d="M10 2.35 L6.5 9 L13.5 9 Z" fill="white" opacity="0.95"/>'
+        : '';
     return L.divIcon({
         html: `
-            <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                <path d="M10 2 L2 18 L18 18 Z" fill="${color}" stroke="black" stroke-width="${outlineWidth}"/>
+            <svg width="24" height="24" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                <path d="${trianglePath}" fill="${color}"/>
+                ${snowCapSvg}
+                <path d="${trianglePath}" fill="none" stroke="black" stroke-width="${outlineWidth}"/>
             </svg>
         `,
         className: 'summit-icon',
-        iconSize: [20, 20],
-        iconAnchor: [10, 10]
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
     });
 }
 
@@ -240,10 +246,35 @@ function processSheetToSummitsRows(sheetCsvText) {
 }
 
 // Parse column S: "url1|url2", "none", or empty. Returns array of valid URLs (http/https); empty if none.
+function isLikelyImageUrl(url) {
+    try {
+        const u = new URL(url);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+        const pathname = u.pathname.toLowerCase();
+        // Accept common image extensions used by Strava/CDN photos.
+        if (/\.(jpg|jpeg|png|webp|gif|avif)(?:$|\?)/i.test(pathname)) return true;
+        // Fallback: some providers pass image format via query params.
+        const format = (u.searchParams.get('format') || '').toLowerCase();
+        if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'].includes(format)) return true;
+        return false;
+    } catch (_err) {
+        return false;
+    }
+}
+
 function parsePhotoUrlsFromColumnS(value) {
     const raw = (value || '').trim();
     if (!raw || raw.toLowerCase() === 'none') return [];
-    return raw.split('|').map(s => (s || '').trim()).filter(s => s && (s.startsWith('http://') || s.startsWith('https://')));
+    const candidates = raw.split('|').map(s => (s || '').trim()).filter(Boolean);
+    const valid = [];
+    candidates.forEach((u) => {
+        if (isLikelyImageUrl(u)) {
+            valid.push(u);
+        } else {
+            console.warn('Skipping non-image photo URL in column S:', u);
+        }
+    });
+    return valid;
 }
 
 // Returns display text for column P link, or null if URL should be skipped.
@@ -743,23 +774,45 @@ let photoSwipeLightbox = null;
 const PHOTOSWIPE_DEFAULT_WIDTH = 2048;
 const PHOTOSWIPE_DEFAULT_HEIGHT = 1536;
 
+function loadPhotoItemWithDimensions(url) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = function() {
+            resolve({
+                src: url,
+                width: img.naturalWidth || PHOTOSWIPE_DEFAULT_WIDTH,
+                height: img.naturalHeight || PHOTOSWIPE_DEFAULT_HEIGHT
+            });
+        };
+        img.onerror = function() {
+            console.warn('Photo load failed, using fallback dimensions:', url);
+            resolve({
+                src: url,
+                width: PHOTOSWIPE_DEFAULT_WIDTH,
+                height: PHOTOSWIPE_DEFAULT_HEIGHT
+            });
+        };
+        img.src = url;
+    });
+}
+
+function resolvePhotoItems(urls) {
+    return Promise.all(urls.map(loadPhotoItemWithDimensions));
+}
+
 function initPhotoSwipeLightbox() {
     if (typeof PhotoSwipeLightbox === 'undefined' || typeof PhotoSwipe === 'undefined') return;
     if (photoSwipeLightbox) return;
-    window._pswpPhotoUrls = [];
+    window._pswpPhotoItems = [];
     photoSwipeLightbox = new PhotoSwipeLightbox({
         pswpModule: PhotoSwipe,
         showHideAnimationType: 'none'
     });
     photoSwipeLightbox.addFilter('numItems', function() {
-        return (window._pswpPhotoUrls && window._pswpPhotoUrls.length) || 0;
+        return (window._pswpPhotoItems && window._pswpPhotoItems.length) || 0;
     });
     photoSwipeLightbox.addFilter('itemData', function(itemData, index) {
-        return {
-            src: window._pswpPhotoUrls[index],
-            width: PHOTOSWIPE_DEFAULT_WIDTH,
-            height: PHOTOSWIPE_DEFAULT_HEIGHT
-        };
+        return window._pswpPhotoItems[index];
     });
     photoSwipeLightbox.init();
 }
@@ -776,10 +829,13 @@ document.body.addEventListener('click', function(e) {
     if (urls.length === 0) return;
     e.preventDefault();
     e.stopPropagation();
-    if (!photoSwipeLightbox) initPhotoSwipeLightbox();
-    if (!photoSwipeLightbox) return;
-    window._pswpPhotoUrls = urls;
-    photoSwipeLightbox.loadAndOpen(0);
+    resolvePhotoItems(urls).then(function(photoItems) {
+        // Wait for all dimensions to be resolved before initializing/opening PhotoSwipe.
+        if (!photoSwipeLightbox) initPhotoSwipeLightbox();
+        if (!photoSwipeLightbox) return;
+        window._pswpPhotoItems = photoItems;
+        photoSwipeLightbox.loadAndOpen(0);
+    });
 }, true);
 
 // Initialize the app
