@@ -24,3 +24,89 @@
   outline: 1px dotted currentColor;
   outline-offset: 1px;
 }
+
+/* Hidden legend toggle and panel */
+#legend-toggle-btn {
+  position: absolute;
+  left: 12px;
+  bottom: 28px;
+  z-index: 1001;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: #333;
+  color: #fff;
+  font-weight: bold;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+}
+
+#legend-toggle-btn:hover {
+  background: #444;
+}
+
+#legend-toggle-btn.hidden {
+  display: none;
+}
+
+#map-legend {
+  position: absolute;
+  left: 12px;
+  bottom: 66px;
+  z-index: 1001;
+  width: 230px;
+  max-height: 55vh;
+  overflow-y: auto;
+  padding: 10px;
+  border-radius: 5px;
+  background: #333;
+  color: #fff;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+  font-family: Arial, sans-serif;
+  font-size: 13px;
+}
+
+#map-legend.hidden {
+  display: none;
+}
+
+.legend-section + .legend-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.legend-title {
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.legend-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 18px;
+}
+
+.legend-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.legend-track-line {
+  width: 18px;
+  height: 0;
+  border-top: 3px solid #fff;
+  border-radius: 2px;
+}

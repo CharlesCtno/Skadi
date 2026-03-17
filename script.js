@@ -114,11 +114,12 @@ function getProjectColor(project) {
 }
 
 function getTrackColorByType(type) {
-    const t = type.toLowerCase();
+    const t = (type || '').toLowerCase();
     if (t.includes('ski')) return '#46bdc6';
-    if (t.includes('hike')) return '#ff6d01';
-    if (t.includes('mountaineering')) return '#ea4335';
-    if (t.includes('bike')) return '#fbbc04';
+    if (t.includes('trail')) return '#ffaa6b';
+    if (t.includes('randonnée') || t.includes('hike')) return '#ff6d01';
+    if (t.includes('alpinisme') || t.includes('mountaineering')) return '#ea4335';
+    if (t.includes('vélo') || t.includes('bike')) return '#34a853';
     return defaultColor;
 }
 
@@ -282,16 +283,17 @@ function getActivityLinkText(url) {
     const u = (url || '').trim();
     if (!u) return null;
     const lower = u.toLowerCase();
-    if (lower.includes('strava')) return 'Strava activity';
-    if (lower.includes('komoot')) return 'Komoot route';
+    if (lower.includes('strava')) return 'Activité Strava';
+    if (lower.includes('komoot')) return 'Parcours Komoot';
     return null;
 }
 
 function buildSummitPopupContent(name, altitude, project, status) {
+    const statusLabel = status === 'completed' ? 'Accompli' : 'À gravir';
     return `
         <b>${name} ${altitude ? `(${altitude}m)` : ''}</b><br>
-        <b>Project:</b> ${project}<br>
-        <b>Status:</b> ${status}
+        <b>Projet :</b> ${project}<br>
+        <b>Statut :</b> ${statusLabel}
     `;
 }
 
@@ -300,14 +302,14 @@ function buildTrackPopupContent(gpxName, season, type, grade, distance, duration
     const photoUrls = parsePhotoUrlsFromColumnS(photoUrlsColumnS);
     const hasPhotos = photoUrls.length > 0;
     const photoBlock = hasPhotos
-        ? (() => { const escaped = photoUrls.map(u => u.replace(/"/g, '&quot;')).join('|'); return ` <span class="popup-photos-row" data-photo-urls="${escaped}"><button type="button" class="popup-photos-btn" aria-label="View photos">📸</button></span>`; })()
+        ? (() => { const escaped = photoUrls.map(u => u.replace(/"/g, '&quot;')).join('|'); return ` <span class="popup-photos-row" data-photo-urls="${escaped}"><button type="button" class="popup-photos-btn" aria-label="Voir les photos">📸</button></span>`; })()
         : '';
-    let html = `<b>${gpxName}</b>${photoBlock}<br><b>Season:</b> ${season}`;
-    if (dataType !== 'bike') html += `<br><b>Type:</b> ${type}`;
-    if (grade) html += `<br><b>Grade:</b> ${grade}`;
-    if (distance) html += `<br><b>Distance:</b> ${distance} km`;
-    if (duration) html += `<br><b>Duration:</b> ${duration}`;
-    if (elevationGain) html += `<br><b>Elevation Gain:</b> ${elevationGain} m`;
+    let html = `<b>${gpxName}</b>${photoBlock}<br><b>Saison :</b> ${season}`;
+    if (dataType !== 'bike') html += `<br><b>Type :</b> ${type}`;
+    if (grade) html += `<br><b>Cotation :</b> ${grade}`;
+    if (distance) html += `<br><b>Distance :</b> ${distance} km`;
+    if (duration) html += `<br><b>Durée :</b> ${duration}`;
+    if (elevationGain) html += `<br><b>Dénivelé :</b> ${elevationGain} m`;
     const linkText = getActivityLinkText(activityUrl);
     if (linkText) {
         const href = (activityUrl || '').trim();
@@ -316,6 +318,83 @@ function buildTrackPopupContent(gpxName, season, type, grade, distance, duration
         }
     }
     return html;
+}
+
+function buildLegendProjectRowsHtml() {
+    const bikeOnlyProjects = new Set(['Morges to Como', 'Wien to Innsbruck']);
+    return Object.entries(projectColors)
+        .filter(([projectName]) => !bikeOnlyProjects.has(projectName))
+        .map(([projectName, color]) => (
+        `<div class="legend-row">
+            <span class="legend-icon">
+                <svg width="18" height="18" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10 2 L2 18 L18 18 Z" fill="${color}"></path>
+                </svg>
+            </span>
+            <span>${projectName}</span>
+        </div>`
+    )).join('');
+}
+
+function buildLegendActivityRowsHtml() {
+    const activityLegendItems = [
+        { key: 'Ski', label: 'Ski' },
+        { key: 'Trail running', label: 'Trail running' },
+        { key: 'Randonnée', label: 'Randonnée' },
+        { key: 'Alpinisme', label: 'Alpinisme' },
+        { key: 'Vélo', label: 'Vélo' }
+    ];
+    return activityLegendItems.map((item) => (
+        `<div class="legend-row">
+            <span class="legend-track-line" style="border-top-color:${getTrackColorByType(item.key)};"></span>
+            <span>${item.label}</span>
+        </div>`
+    )).join('');
+}
+
+function renderLegendContent() {
+    const legendPanel = document.getElementById('map-legend');
+    if (!legendPanel) return;
+    const completedIconHtml = createTriangleIcon(defaultColor, true).options.html;
+    const todoIconHtml = createTriangleIcon(defaultColor, false).options.html;
+    legendPanel.innerHTML = `
+        <div class="legend-section">
+            <div class="legend-title">Sommets</div>
+            <div class="legend-row"><span class="legend-icon">${completedIconHtml}</span><span>Sommet gravi</span></div>
+            <div class="legend-row"><span class="legend-icon">${todoIconHtml}</span><span>Sommet à gravir</span></div>
+        </div>
+        <div class="legend-section">
+            <div class="legend-title">Projets</div>
+            ${buildLegendProjectRowsHtml()}
+        </div>
+        <div class="legend-section">
+            <div class="legend-title">Type d'activité</div>
+            ${buildLegendActivityRowsHtml()}
+        </div>
+    `;
+}
+
+function closeLegend() {
+    const legendPanel = document.getElementById('map-legend');
+    const legendToggleBtn = document.getElementById('legend-toggle-btn');
+    if (!legendPanel || !legendToggleBtn) return;
+    legendPanel.classList.add('hidden');
+    legendPanel.setAttribute('aria-hidden', 'true');
+    legendToggleBtn.setAttribute('aria-expanded', 'false');
+}
+
+function setLegendEnabled(enabled) {
+    const legendPanel = document.getElementById('map-legend');
+    const legendToggleBtn = document.getElementById('legend-toggle-btn');
+    if (!legendPanel || !legendToggleBtn) return;
+    if (enabled) {
+        legendToggleBtn.classList.remove('hidden');
+        legendToggleBtn.disabled = false;
+    } else {
+        closeLegend();
+        legendToggleBtn.classList.add('hidden');
+        legendToggleBtn.disabled = true;
+    }
 }
 
 // Function to load GeoJSON files dynamically
@@ -730,8 +809,10 @@ document.querySelectorAll('#tabs a').forEach(tab => {
         const filtersContainer = document.getElementById('filters-container');
         if (currentTab === 'bike') {
             filtersContainer.classList.add('hidden');
+            setLegendEnabled(false);
         } else {
             filtersContainer.classList.remove('hidden');
+            setLegendEnabled(true);
         }
 
         // Load data for the selected tab
@@ -848,6 +929,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Show filters for the summit tab
     document.getElementById('filters-container').classList.remove('hidden');
+    renderLegendContent();
+    setLegendEnabled(true);
+    const legendToggleBtn = document.getElementById('legend-toggle-btn');
+    const legendPanel = document.getElementById('map-legend');
+    if (legendToggleBtn && legendPanel) {
+        legendToggleBtn.addEventListener('click', function() {
+            const isHidden = legendPanel.classList.contains('hidden');
+            if (isHidden) {
+                legendPanel.classList.remove('hidden');
+                legendPanel.setAttribute('aria-hidden', 'false');
+                legendToggleBtn.setAttribute('aria-expanded', 'true');
+            } else {
+                closeLegend();
+            }
+        });
+    }
 
     // Set the default map view for summits
     map.setView([46.2, 7.5], 8);

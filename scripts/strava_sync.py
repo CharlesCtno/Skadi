@@ -87,12 +87,12 @@ def _normalize(text: str) -> str:
 
 def season_from_month(month: int) -> str:
     if month in (12, 1, 2):
-        return "Winter"
+        return "Hiver"
     if month in (3, 4, 5):
-        return "Spring"
+        return "Printemps"
     if month in (6, 7, 8):
-        return "Summer"
-    return "Autumn"
+        return "Été"
+    return "Automne"
 
 
 def _normalize_activity_type(value: str) -> str:
@@ -131,9 +131,11 @@ def detect_activity_type_fields(payload: dict) -> Tuple[str, str, str]:
 def sheet_type_from_strava_activity_type(activity_type: str) -> str:
     normalized = _normalize_activity_type(activity_type)
     if normalized == "hike":
-        return "Hike"
+        return "Randonnée"
     if normalized == "backcountryski":
         return "Ski"
+    if normalized == "trailrun":
+        return "Trail Running"
     return ""
 
 

@@ -25,7 +25,7 @@ def main() -> None:
     duration_h = "4.10"
     elevation_gain_m = "1320"
     activity_url = "https://www.strava.com/activities/17317103730"
-    test_month = 1  # January -> Winter
+    test_month = 1  # January -> Hiver
     season = season_from_month(test_month)
 
     gpx_filename = activity_title_to_gpx_filename(activity_title)

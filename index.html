@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Skaði Summit Map</title>
+  <title>Skaði</title>
 
   <!-- Favicon -->
   <link rel="icon" type="image/x-icon" href="favicon.ico">
@@ -233,57 +233,60 @@
   <header>
     <h1>Skaði</h1>
     <!-- Uncomment next line to show "Download CSV" for debugging (inspect exact data the site uses). -->
-    <!-- <button id="download-csv" type="button" title="Download the CSV used by this tab">Download CSV</button> -->
+    <!-- <button id="download-csv" type="button" title="Télécharger le CSV utilisé par cet onglet">Télécharger le CSV</button> -->
   </header>
   <ul id="tabs">
-    <li><a href="#" class="active" data-tab="summits">Summits</a></li>
-    <li><a href="#" data-tab="bike">Bike</a></li>
+    <li><a href="#" class="active" data-tab="summits">Sommets</a></li>
+    <li><a href="#" data-tab="bike">Bikepacking</a></li>
   </ul>
   <div id="tab-content">
     <div id="map"></div>
+    <button id="legend-toggle-btn" type="button" aria-label="Afficher la légende" aria-expanded="false">i</button>
+    <div id="map-legend" class="hidden" aria-hidden="true"></div>
     <div id="filters-container">
   <div id="filters">
     <div class="filter-group">
-      <label for="status">Status:</label>
+      <label for="status">Statut :</label>
       <select id="status">
-        <option value="all">All</option>
-        <option value="to do">To Do</option>
-        <option value="completed">Completed</option>
+        <option value="all">Tous</option>
+        <option value="to do">À gravir</option>
+        <option value="completed">Gravi</option>
       </select>
     </div>
 
     <div class="filter-group">
-      <label for="season">Season:</label>
+      <label for="season">Saison :</label>
       <select id="season">
-        <option value="all">All</option>
-        <option value="Winter">Winter</option>
-        <option value="Spring">Spring</option>
-        <option value="Summer">Summer</option>
-        <option value="Autumn">Autumn</option>
+        <option value="all">Toutes</option>
+        <option value="Hiver">Hiver</option>
+        <option value="Printemps">Printemps</option>
+        <option value="Été">Été</option>
+        <option value="Automne">Automne</option>
       </select>
     </div>
 
     <div class="filter-group">
-      <label for="activity-type">Activity Type:</label>
+      <label for="activity-type">Type d'activité :</label>
       <select id="activity-type">
-        <option value="all">All</option>
+        <option value="all">Tous</option>
         <option value="Ski">Ski</option>
-        <option value="Hike">Hike</option>
-        <option value="Mountaineering">Mountaineering</option>
-        <option value="Bike">Bike</option>
+        <option value="Trail running">Trail running</option>
+        <option value="Randonnée">Randonnée</option>
+        <option value="Alpinisme">Alpinisme</option>
+        <option value="Vélo">Vélo</option>
       </select>
     </div>
 
     <div class="filter-group">
-      <label for="search">Search:</label>
+      <label for="search">Recherche :</label>
       <div style="position: relative;">
-        <input type="text" id="search" placeholder="Search by name..." autocomplete="off">
+        <input type="text" id="search" placeholder="Rechercher par nom..." autocomplete="off">
         <span id="clear-search">✕</span>
       </div>
       <div id="search-results" style="position: absolute; background: #333; border: 1px solid #ccc; max-height: 200px; overflow-y: auto; display: none; width: 200px; z-index: 1000;"></div>
     </div>
 
-    <button id="apply-filters">Apply Filters</button>
+    <button id="apply-filters">Appliquer les filtres</button>
   </div>
 </div>
   </div>
