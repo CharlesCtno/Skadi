@@ -996,6 +996,23 @@ document.querySelectorAll('#tabs a').forEach(tab => {
         // Set current tab
         currentTab = this.getAttribute('data-tab');
 
+        // Skadi must not appear nor influence the bike tab.
+        // When switching to bikepacking, clear any active recommendation state so it doesn't hide layers.
+        const skadiToggleBtn = document.getElementById('skadi-chat-toggle');
+        const skadiPanel = document.getElementById('skadi-chat-panel');
+        if (currentTab === 'bike') {
+            activeRecommendationKeys = null;
+            latestFilterState = { activityType: 'all', status: 'all', season: 'all', name: '' };
+
+            if (skadiToggleBtn) skadiToggleBtn.classList.add('hidden');
+            if (skadiPanel) skadiPanel.classList.add('hidden');
+            if (skadiPanel) skadiPanel.setAttribute('aria-hidden', 'true');
+            if (skadiToggleBtn) skadiToggleBtn.setAttribute('aria-expanded', 'false');
+        } else {
+            // Allow Skadi again on the summits tab.
+            if (skadiToggleBtn) skadiToggleBtn.classList.remove('hidden');
+        }
+
         // Show/hide filters based on the tab
         const filtersContainer = document.getElementById('filters-container');
         if (currentTab === 'bike') {

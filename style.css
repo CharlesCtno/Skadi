@@ -129,6 +129,10 @@
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
 }
 
+#skadi-chat-toggle.hidden {
+  display: none;
+}
+
 #skadi-chat-toggle:hover {
   background: #444;
 }
