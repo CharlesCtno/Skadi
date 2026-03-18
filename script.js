@@ -7,6 +7,14 @@ let gpxNames = [];
 let gpxNameSet = new Set();
 let gpxNameToMarker = {};
 let currentTab = 'summits';
+let activityCatalog = [];
+let activeRecommendationKeys = null;
+let latestFilterState = {
+    activityType: 'all',
+    status: 'all',
+    season: 'all',
+    name: ''
+};
 
 // Initialize map
 function initMap() {
@@ -37,14 +45,65 @@ function createTriangleIcon(color, isCompleted) {
     });
 }
 
-// Function to format duration, handling both hours and days
-function formatDuration(duration) {
-    if (typeof duration === 'string' && duration.includes('day')) {
-        return duration;
+function parseDurationToHours(duration) {
+    if (duration == null) return null;
+    if (typeof duration === 'number' && Number.isFinite(duration)) return duration; // stored as hours
+
+    const raw = String(duration).trim();
+    if (!raw) return null;
+
+    // Detect "2 days" / "2 jours" / "2j"
+    const dayMatch = raw.match(/(\d+(?:[.,]\d+)?)\s*(jour(?:s)?|day(?:s)?|j)\b/i);
+    if (dayMatch) {
+        const num = parseFloat(dayMatch[1].replace(',', '.'));
+        if (!Number.isFinite(num)) return null;
+        return num * 24;
     }
 
-    const decimalHours = parseFloat(duration);
-    if (isNaN(decimalHours)) {
+    // Otherwise treat as hours (e.g. "2" or "2.5")
+    const decimalHours = parseFloat(raw.replace(',', '.'));
+    if (!Number.isFinite(decimalHours)) return null;
+    return decimalHours;
+}
+
+function parseCotationToIndex(gradeRaw) {
+    const raw = String(gradeRaw || '').trim();
+    if (!raw) return null;
+
+    // Accept "T1", "T 1", "t2", etc.
+    const m = raw.match(/t\s*([1-6])/i);
+    if (!m) return null;
+    const idx = parseInt(m[1], 10);
+    return Number.isFinite(idx) ? idx : null;
+}
+
+// Function to format duration for popup/chat display.
+// - If the sheet stores "X jour(s)" / "X j", keep it as days (do not convert to hours).
+// - Otherwise format numeric hours as "HhMM".
+function formatDuration(duration) {
+    if (duration == null) return "N/A";
+
+    if (typeof duration === 'string') {
+        const raw = duration.trim();
+        if (!raw) return "N/A";
+        const lower = raw.toLowerCase();
+
+        // Keep English days as-is
+        if (lower.includes('day')) return raw;
+
+        // Keep French days as display ("2 jours" / "2j")
+        const dayMatch = raw.match(/(\d+(?:[.,]\d+)?)\s*(jour(?:s)?|j)\b/i);
+        if (dayMatch) {
+            const num = parseFloat(dayMatch[1].replace(',', '.'));
+            if (!Number.isFinite(num)) return raw;
+            const numStr = Number.isInteger(num) ? String(Math.trunc(num)) : String(num).replace(/\.0+$/, '');
+            const unit = numStr === '1' ? 'jour' : 'jours';
+            return `${numStr} ${unit}`;
+        }
+    }
+
+    const decimalHours = parseFloat(String(duration).replace(',', '.'));
+    if (!Number.isFinite(decimalHours)) {
         return "N/A";
     }
 
@@ -339,7 +398,7 @@ function buildLegendProjectRowsHtml() {
 function buildLegendActivityRowsHtml() {
     const activityLegendItems = [
         { key: 'Ski', label: 'Ski' },
-        { key: 'Trail running', label: 'Trail running' },
+        { key: 'Trail Running', label: 'Trail Running' },
         { key: 'Randonnée', label: 'Randonnée' },
         { key: 'Alpinisme', label: 'Alpinisme' },
         { key: 'Vélo', label: 'Vélo' }
@@ -464,6 +523,23 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
                 dataType: dataType
             });
 
+            if (activeRecommendationKeys && activeRecommendationKeys.size > 0) {
+                if (!activeRecommendationKeys.has(gpxName)) {
+                    map.removeLayer(track);
+                    map.removeLayer(invisibleTrack);
+                }
+            } else {
+                const nameFilterLower = (latestFilterState.name || '').trim().toLowerCase();
+                const typeMatch = latestFilterState.activityType === 'all' || normalizeActivityTypeValue(type) === normalizeActivityTypeValue(latestFilterState.activityType);
+                const statusMatch = latestFilterState.status === 'all' || 'completed' === latestFilterState.status;
+                const seasonMatch = latestFilterState.season === 'all' || season === latestFilterState.season;
+                const nameMatch = !nameFilterLower || (gpxName || '').toLowerCase().includes(nameFilterLower);
+                if (!(typeMatch && statusMatch && seasonMatch && nameMatch)) {
+                    map.removeLayer(track);
+                    map.removeLayer(invisibleTrack);
+                }
+            }
+
             loadedGeoJSONFiles[dataType + gpxBaseName] = true; // Mark this file as loaded
         })
         .catch(error => {
@@ -508,6 +584,7 @@ function loadData() {
     gpxNames = [];
     gpxNameSet = new Set();
     gpxNameToMarker = {};
+    activityCatalog = [];
 
     // Summits: fetch published sheet and apply same processing as export_sheet_to_csv.py in the browser. Bike: published sheet as-is.
     const csvPath = getCsvPath();
@@ -518,6 +595,7 @@ function loadData() {
             const rows = csvText.split(/\r?\n/).slice(1);
             const summitKeys = new Set();
             const summitStateByKey = new Map();
+            const activityCatalogByKey = new Map();
             // When multiple summits share one activity, CSV export leaves activity columns empty for merged rows. Carry them over.
             let lastActivity = null;
 
@@ -538,7 +616,7 @@ function loadData() {
 
                 const statusCol = hasStatusCol ? (columns[0] || '').trim() : '';
                 const statusColLower = statusCol.toLowerCase();
-                const isToDoStatus = hasStatusCol && statusColLower === 'to do';
+                const isToDoStatus = hasStatusCol && (statusColLower === 'to do' || statusColLower === 'à faire' || statusColLower === 'a faire');
                 const nameIdx = hasStatusCol ? 1 : 0;
                 let name = (columns[nameIdx] || '').trim();
                 let altitudeRaw = (columns[nameIdx + 1] || '').trim();
@@ -605,7 +683,7 @@ function loadData() {
                     // Explicit Status (column C): "to do" overrides GPX presence.
                     // For empty status, completion is based on the row GPX cell (column N) only.
                     let isCompleted;
-                    if (hasStatusCol && statusColLower === 'to do') {
+                    if (hasStatusCol && (statusColLower === 'to do' || statusColLower === 'à faire' || statusColLower === 'a faire')) {
                         isCompleted = false;
                     } else if (hasStatusCol && statusColLower === 'completed') {
                         isCompleted = true;
@@ -628,8 +706,10 @@ function loadData() {
                             season: season,
                             name: name,
                             summitKey: summitKey,
-                            dataType: currentTab
+                            dataType: currentTab,
+                            activityKeys: new Set()
                         };
+                        if (gpxName) markerState.activityKeys.add(gpxName);
                         markers.push(markerState);
 
                         if (gpxName) {
@@ -641,6 +721,7 @@ function loadData() {
                     } else {
                         const existing = summitStateByKey.get(summitKey);
                         if (existing) {
+                            if (gpxName) existing.activityKeys.add(gpxName);
                             // Completed always wins if any row for this summit is completed.
                             const shouldBeCompleted = existing.status === 'completed' || isCompleted;
                             const nextStatus = shouldBeCompleted ? 'completed' : 'to do';
@@ -656,6 +737,27 @@ function loadData() {
 
                 // Load GeoJSON for every row that has a GPX file (same summit can have multiple tracks).
                 if (gpxFile && gpxName) {
+                    const distanceKm = parseFloat(normalizeDecimal(distance));
+                    const durationHours = parseDurationToHours(duration);
+                    const elevationM = parseFloat(normalizeDecimal(elevationGain));
+                    if (!activityCatalogByKey.has(gpxName)) {
+                        const cotationIndex = parseCotationToIndex(grade);
+                        activityCatalogByKey.set(gpxName, {
+                            key: gpxName,
+                            name: gpxName,
+                            distanceKm: Number.isFinite(distanceKm) ? distanceKm : null,
+                            durationHours: Number.isFinite(durationHours) ? durationHours : null,
+                            // Keep a human-readable duration label for popups/chat.
+                            // If the sheet stores "X jours"/"Xj", this will stay in days (not converted to hours).
+                            durationLabel: formatDuration(duration),
+                            cotationIndex,
+                            elevationM: Number.isFinite(elevationM) ? elevationM : null,
+                            season: season || null,
+                            type: type || null,
+                            status: hasStatusCol && (statusColLower === 'to do' || statusColLower === 'à faire' || statusColLower === 'a faire') ? 'to do' : 'completed',
+                            dataType: currentTab
+                        });
+                    }
                     if (!gpxNameSet.has(gpxName)) {
                         gpxNameSet.add(gpxName);
                         gpxNames.push(gpxName);
@@ -682,6 +784,14 @@ function loadData() {
                 }
 
             });
+
+            activityCatalog = Array.from(activityCatalogByKey.values());
+            // Re-apply current map state after data reload (tab switch, etc.).
+            if (activeRecommendationKeys && activeRecommendationKeys.size > 0) {
+                applyRecommendationVisibility(activeRecommendationKeys);
+            } else {
+                applyFilters(latestFilterState);
+            }
         })
         .catch(error => {
             console.error('Error loading CSV:', error);
@@ -699,9 +809,11 @@ function debounce(fn, ms) {
 
 function runSearch() {
     const searchInput = document.getElementById('search');
+    if (!searchInput) return;
     const searchTerm = searchInput.value.toLowerCase();
     const resultsContainer = document.getElementById('search-results');
     const clearSearchButton = document.getElementById('clear-search');
+    if (!resultsContainer || !clearSearchButton) return;
 
     if (searchTerm.length === 0) {
         clearSearchButton.style.display = 'none';
@@ -732,39 +844,112 @@ function runSearch() {
     }
 }
 
-document.getElementById('search').addEventListener('input', debounce(runSearch, 150));
+function normalizeActivityTypeValue(value) {
+    const normalized = (value || '').trim().toLowerCase();
+    if (!normalized || normalized === 'all') return 'all';
+    if (normalized === 'trail running') return 'Trail Running';
+    if (normalized.includes('randonnée')) return 'Randonnée';
+    if (normalized.includes('alpinisme')) return 'Alpinisme';
+    if (normalized.includes('vélo') || normalized.includes('velo')) return 'Vélo';
+    if (normalized.includes('ski')) return 'Ski';
+    return (value || '').trim();
+}
+
+function normalizeSeasonValue(value) {
+    return String(value || '')
+        .replace(/[\u00A0\u202F]/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
+function markerHasActivityNameMatch(marker, nameFilterLower) {
+    if (!nameFilterLower) return true;
+    if ((marker.name || '').toLowerCase().includes(nameFilterLower)) return true;
+    if (!marker.activityKeys || marker.activityKeys.size === 0) return false;
+    for (const key of marker.activityKeys) {
+        if (key.toLowerCase().includes(nameFilterLower)) return true;
+    }
+    return false;
+}
+
+function applyRecommendationVisibility(selectedKeys) {
+    activeRecommendationKeys = selectedKeys;
+    markers.forEach(marker => {
+        if (marker.dataType !== currentTab) return;
+        const hasMatch = marker.activityKeys && Array.from(marker.activityKeys).some((key) => selectedKeys.has(key));
+        // En mode recommandation, on n'affiche que les sommets "accomplis".
+        // Ça évite que des to-do apparaissent si une activité est liée à tort à un summit.
+        if (hasMatch && marker.status === 'completed') {
+            map.addLayer(marker.layer);
+        } else {
+            map.removeLayer(marker.layer);
+        }
+    });
+
+    tracks.forEach(track => {
+        if (track.dataType !== currentTab) return;
+        if (selectedKeys.has(track.gpxName)) {
+            map.addLayer(track.layer);
+            map.addLayer(track.invisibleLayer);
+        } else {
+            map.removeLayer(track.layer);
+            map.removeLayer(track.invisibleLayer);
+        }
+    });
+}
 
 // Clear search input
-document.getElementById('clear-search').addEventListener('click', function() {
-    document.getElementById('search').value = '';
-    document.getElementById('search-results').style.display = 'none';
-    document.getElementById('search').focus();
-    document.getElementById('clear-search').style.display = 'none';
-});
+const searchInputEl = document.getElementById('search');
+const clearSearchBtnEl = document.getElementById('clear-search');
+if (searchInputEl) {
+    searchInputEl.addEventListener('input', debounce(runSearch, 150));
+}
+if (searchInputEl && clearSearchBtnEl) {
+    clearSearchBtnEl.addEventListener('click', function() {
+        searchInputEl.value = '';
+        const searchResultsEl = document.getElementById('search-results');
+        if (searchResultsEl) searchResultsEl.style.display = 'none';
+        searchInputEl.focus();
+        clearSearchBtnEl.style.display = 'none';
+    });
+}
 
 // Handle Enter key in search
-document.getElementById('search').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') {
-        const searchTerm = e.target.value;
-        focusOnGPXName(searchTerm);
-        document.getElementById('search-results').style.display = 'none';
-    }
-});
+if (searchInputEl) {
+    searchInputEl.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            const searchTerm = e.target.value;
+            focusOnGPXName(searchTerm);
+            const searchResultsEl = document.getElementById('search-results');
+            if (searchResultsEl) searchResultsEl.style.display = 'none';
+        }
+    });
+}
 
 // Function to apply filters
-function applyFilters() {
-    const activityType = document.getElementById('activity-type').value;
-    const status = document.getElementById('status').value;
-    const season = document.getElementById('season').value;
+function applyFilters(filters = null) {
+    const fallbackActivityType = document.getElementById('activity-type') ? document.getElementById('activity-type').value : 'all';
+    const fallbackStatus = document.getElementById('status') ? document.getElementById('status').value : 'all';
+    const fallbackSeason = document.getElementById('season') ? document.getElementById('season').value : 'all';
+    const fallbackName = document.getElementById('search') ? document.getElementById('search').value : '';
+
+    const activityType = normalizeActivityTypeValue(filters && typeof filters.activityType === 'string' ? filters.activityType : fallbackActivityType);
+    const status = filters && typeof filters.status === 'string' ? filters.status : fallbackStatus;
+    const season = filters && typeof filters.season === 'string' ? filters.season : fallbackSeason;
+    const nameFilter = filters && typeof filters.name === 'string' ? filters.name : fallbackName;
+    const nameFilterLower = (nameFilter || '').trim().toLowerCase();
+    latestFilterState = { activityType, status, season, name: nameFilter || '' };
+    activeRecommendationKeys = null;
 
     markers.forEach(marker => {
         if (marker.dataType !== currentTab) return;
 
-        const typeMatch = activityType === 'all' || marker.type === activityType;
+        const typeMatch = activityType === 'all' || normalizeActivityTypeValue(marker.type) === activityType;
         const statusMatch = status === 'all' || marker.status === status;
-        const seasonMatch = season === 'all' || marker.season === season;
+        const seasonMatch = season === 'all' || normalizeSeasonValue(marker.season) === normalizeSeasonValue(season);
+        const nameMatch = markerHasActivityNameMatch(marker, nameFilterLower);
 
-        if (typeMatch && statusMatch && seasonMatch) {
+        if (typeMatch && statusMatch && seasonMatch && nameMatch) {
             map.addLayer(marker.layer);
         } else {
             map.removeLayer(marker.layer);
@@ -774,11 +959,12 @@ function applyFilters() {
     tracks.forEach(track => {
         if (track.dataType !== currentTab) return;
 
-        const typeMatch = activityType === 'all' || track.type === activityType;
+        const typeMatch = activityType === 'all' || normalizeActivityTypeValue(track.type) === activityType;
         const statusMatch = status === 'all' || track.status === status;
-        const seasonMatch = season === 'all' || track.season === season;
+        const seasonMatch = season === 'all' || normalizeSeasonValue(track.season) === normalizeSeasonValue(season);
+        const nameMatch = !nameFilterLower || (track.gpxName || '').toLowerCase().includes(nameFilterLower);
 
-        if (typeMatch && statusMatch && seasonMatch) {
+        if (typeMatch && statusMatch && seasonMatch && nameMatch) {
             map.addLayer(track.layer);
             map.addLayer(track.invisibleLayer);
         } else {
@@ -789,7 +975,12 @@ function applyFilters() {
 }
 
 // Add event listener for the apply filters button
-document.getElementById('apply-filters').addEventListener('click', applyFilters);
+const applyFiltersBtn = document.getElementById('apply-filters');
+if (applyFiltersBtn) {
+    applyFiltersBtn.addEventListener('click', function() {
+        applyFilters();
+    });
+}
 
 // Add event listeners for tabs
 document.querySelectorAll('#tabs a').forEach(tab => {
@@ -808,10 +999,10 @@ document.querySelectorAll('#tabs a').forEach(tab => {
         // Show/hide filters based on the tab
         const filtersContainer = document.getElementById('filters-container');
         if (currentTab === 'bike') {
-            filtersContainer.classList.add('hidden');
+            if (filtersContainer) filtersContainer.classList.add('hidden');
             setLegendEnabled(false);
         } else {
-            filtersContainer.classList.remove('hidden');
+            if (filtersContainer) filtersContainer.classList.remove('hidden');
             setLegendEnabled(true);
         }
 
@@ -847,6 +1038,402 @@ if (downloadCsvBtn) {
             .catch(function(err) {
                 console.error('Download CSV failed:', err);
             });
+    });
+}
+
+const SKADI_HELP_MESSAGE = `Bonjour ! Je suis Skadi, ton guide dans la montagne. Tu peux me parler de ce que tu cherches de deux façons :
+Pour filtrer la carte, dis-moi par exemple :
+
+"randonnée en été"
+"accompli" ou "à faire"
+le nom d'une activité
+
+Pour trouver les 3 activités qui te correspondent le mieux, donne-moi au moins une de ces infos :
+
+une distance (ex: "15km")
+une durée (ex: "3 heures" ou "2j" ou "1 jour")
+un dénivelé (ex: "1000m")
+une cotation (ex: "T3")
+
+Tu peux aussi combiner : "randonnée autour de 15km avec 1000m de dénivelé"`;
+let skadiHelpShown = false;
+
+function parseLocalizedNumber(raw) {
+    if (!raw) return null;
+    const n = parseFloat(String(raw).replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
+}
+
+function detectSkadiMode(message) {
+    const text = (message || '').toLowerCase();
+    const hasDistance = /\b\d+(?:[.,]\d+)?\s*(km|kilom[eè]tre(?:s)?)\b/i.test(text);
+    const hasDurationHours = /\b\d+(?:[.,]\d+)?\s*(heure(?:s)?|h)\b/i.test(text) || /\b\d+h\d{1,2}\b/i.test(text);
+    const hasDurationDays = /\b\d+(?:[.,]\d+)?\s*(jour(?:s)?|j)\b/i.test(text);
+    const hasDuration = hasDurationHours || hasDurationDays;
+    const hasElevation = /\b\d+(?:[.,]\d+)?\s*m\s*(de\s*d[eé]nivel[eé]|d\+)\b/i.test(text) || /\bd\+\b/i.test(text) || /\bd[eé]nivel[eé]\b/i.test(text) || /\bm\s*d\+\b/i.test(text);
+    const hasCotation = /\bt\s*[1-6]\b/i.test(text);
+    return (hasDistance || hasDuration || hasElevation || hasCotation) ? 'recommendation' : 'filter';
+}
+
+function extractRecommendationTargets(message) {
+    const text = (message || '').toLowerCase();
+    let distanceKm = null;
+    let durationHours = null;
+    let elevationM = null;
+    let cotationIndex = null;
+
+    const distanceMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:km|kilom[eè]tre(?:s)?)/i);
+    if (distanceMatch) {
+        distanceKm = parseLocalizedNumber(distanceMatch[1]);
+    }
+
+    const dayMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(jour(?:s)?|j)\b/i);
+    if (dayMatch) {
+        const days = parseLocalizedNumber(dayMatch[1]);
+        // Convert "jours" en heures pour le scoring (2 jours != 2 heures).
+        if (days != null) durationHours = days * 24;
+    } else {
+    const hMinMatch = text.match(/(\d+)\s*h\s*(\d{1,2})\b/i);
+    if (hMinMatch) {
+        const hours = parseLocalizedNumber(hMinMatch[1]) || 0;
+        const minutes = parseLocalizedNumber(hMinMatch[2]) || 0;
+        durationHours = hours + (minutes / 60);
+    } else {
+        const hourMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:heure(?:s)?|h)\b/i);
+        if (hourMatch) {
+            durationHours = parseLocalizedNumber(hourMatch[1]);
+        } else {
+            const minuteMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:minute(?:s)?)\b/i);
+            if (minuteMatch) {
+                const minutes = parseLocalizedNumber(minuteMatch[1]);
+                if (minutes != null) durationHours = minutes / 60;
+            }
+        }
+    }
+    }
+
+    const elevationPatterns = [
+        /(\d+(?:[.,]\d+)?)\s*m\s*de\s*d[eé]nivel[eé]/i,
+        /(\d+(?:[.,]\d+)?)\s*m\s*d\+/i,
+        /(\d+(?:[.,]\d+)?)\s*d\+/i,
+        /(\d+(?:[.,]\d+)?)\s*m\b.*d[eé]nivel[eé]/i,
+        /d[eé]nivel[eé].*?(\d+(?:[.,]\d+)?)/i
+    ];
+    for (const pattern of elevationPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+            elevationM = parseLocalizedNumber(match[1]);
+            break;
+        }
+    }
+
+    const cotMatch = text.match(/\bt\s*([1-6])\b/i);
+    if (cotMatch) {
+        const idx = parseInt(cotMatch[1], 10);
+        cotationIndex = Number.isFinite(idx) ? idx : null;
+    }
+
+    return { distanceKm, durationHours, elevationM, cotationIndex };
+}
+
+function parseFilterIntent(message) {
+    const text = (message || '').toLowerCase();
+    let remaining = text;
+
+    let season = 'all';
+    // Avoid \b because accented characters (ex: "été") are not "word chars" in JS regex \b.
+    if (/été|ete/i.test(text)) season = 'Été';
+    else if (/hiver/i.test(text)) season = 'Hiver';
+    else if (/printemps/i.test(text)) season = 'Printemps';
+    else if (/automne/i.test(text)) season = 'Automne';
+
+    let activityType = 'all';
+    if (/randonn[ée]e?/i.test(text) || /rando|randon/i.test(text)) activityType = 'Randonnée';
+    else if (/ski/i.test(text)) activityType = 'Ski';
+    else if (/trail/i.test(text)) activityType = 'Trail Running';
+    else if (/alpinisme|alpine/i.test(text)) activityType = 'Alpinisme';
+    else if (/vélo|velo|bike/i.test(text)) activityType = 'Vélo';
+
+    let status = 'all';
+    if (/accompli/i.test(text)) status = 'completed';
+    else if (/(a|à)\s*faire/i.test(text)) status = 'to do';
+
+    const cleanupPatterns = [
+        /été|ete/gi,
+        /hiver/gi,
+        /printemps/gi,
+        /automne/gi,
+        /randonn[ée]e?/gi,
+        /rando|randon/gi,
+        /ski/gi,
+        /trail/gi,
+        /alpinisme|alpine/gi,
+        /vélo|velo|bike/gi,
+        /accompli/gi,
+        /(a|à)\s*faire/gi,
+        /\b(en|de|du|des|avec|autour|la|le|les|pour|une|un)\b/gi
+    ];
+    cleanupPatterns.forEach((pattern) => {
+        remaining = remaining.replace(pattern, ' ');
+    });
+    remaining = remaining.replace(/\s+/g, ' ').trim();
+
+    return {
+        season,
+        activityType,
+        status,
+        name: remaining
+    };
+}
+
+function resetMapForChatQuery() {
+    activeRecommendationKeys = null;
+    latestFilterState = { activityType: 'all', status: 'all', season: 'all', name: '' };
+    applyFilters(latestFilterState);
+    if (currentTab === 'bike') {
+        map.setView([46.2, 7.5], 6);
+    } else {
+        map.setView([46.2, 7.5], 8);
+    }
+}
+
+function getVisibleActivityCount() {
+    let count = 0;
+    const seen = new Set();
+
+    tracks.forEach((track) => {
+        if (track.dataType !== currentTab) return;
+        if (!map.hasLayer(track.layer)) return;
+        const key = `track:${track.gpxName}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        count += 1;
+    });
+
+    markers.forEach((marker) => {
+        if (marker.dataType !== currentTab) return;
+        if (!map.hasLayer(marker.layer)) return;
+        const key = `marker:${marker.summitKey || marker.name}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        count += 1;
+    });
+
+    return count;
+}
+
+function buildFilterConfirmation(intent, count) {
+    if (count === 0) {
+        return "Je n'ai trouvé aucune activité correspondant à ta recherche. Tu peux reformuler ou consulter le message d'aide en tapant 'aide'.";
+    }
+    const bits = [];
+    if (intent.activityType !== 'all') bits.push(intent.activityType.toLowerCase());
+    if (intent.season !== 'all') bits.push(`en ${intent.season.toLowerCase()}`);
+    if (intent.status === 'completed') bits.push('accomplies');
+    if (intent.status === 'to do') bits.push('à faire');
+    if (intent.name) bits.push(`qui correspondent à "${intent.name}"`);
+    const details = bits.length ? ` : ${bits.join(' ')}` : '';
+    return `J'ai filtré la carte pour toi${details} (${count} activité${count > 1 ? 's' : ''}).`;
+}
+
+function formatHoursForChat(hours) {
+    if (!Number.isFinite(hours)) return 'N/A';
+    return formatDuration(String(hours));
+}
+
+function formatDistanceForChat(distanceKm) {
+    if (!Number.isFinite(distanceKm)) return 'N/A';
+    return Number.isInteger(distanceKm) ? `${distanceKm}` : distanceKm.toFixed(1).replace(/\.0$/, '');
+}
+
+function formatElevationForChat(elevationM) {
+    if (!Number.isFinite(elevationM)) return 'N/A';
+    return `${Math.round(elevationM)}`;
+}
+
+function getRelativeDifference(actual, target) {
+    const denominator = Math.max(Math.abs(target), 0.0001);
+    return Math.abs(actual - target) / denominator;
+}
+
+function getRecommendationMatches(intent) {
+    const filters = intent && intent.filters ? intent.filters : {};
+    const targets = intent && intent.targets ? intent.targets : {};
+    const distanceTarget = targets.distance_km;
+    const durationMinTarget = targets.duration_min;
+    const elevationTarget = targets.elevation_m;
+    const cotationIndexTarget = targets.cotation_index;
+
+    const hasDistance = distanceTarget !== null && distanceTarget !== undefined && Number.isFinite(Number(distanceTarget));
+    const hasDurationMinutes = durationMinTarget !== null && durationMinTarget !== undefined && Number.isFinite(Number(durationMinTarget));
+    const hasElevation = elevationTarget !== null && elevationTarget !== undefined && Number.isFinite(Number(elevationTarget));
+    const hasCotation = cotationIndexTarget !== null && cotationIndexTarget !== undefined && Number.isFinite(Number(cotationIndexTarget));
+
+    const targetDistanceKm = hasDistance ? Number(distanceTarget) : null;
+    const targetDurationHours = hasDurationMinutes ? Number(durationMinTarget) / 60 : null;
+    const targetElevationM = hasElevation ? Number(elevationTarget) : null;
+    const targetCotationIndex = hasCotation ? Number(cotationIndexTarget) : null;
+
+    const seasonFilter = filters.season || null;
+    const typeFilter = normalizeActivityTypeValue(filters.type || null);
+    const nameFilter = (filters.name || '').trim().toLowerCase();
+
+    const candidates = activityCatalog.filter((activity) => {
+        if (activity.dataType !== currentTab) return false;
+        if (activity.status !== 'completed') return false;
+        if (seasonFilter && normalizeSeasonValue(activity.season) !== normalizeSeasonValue(seasonFilter)) return false;
+        if (typeFilter && typeFilter !== 'all' && normalizeActivityTypeValue(activity.type) !== typeFilter) return false;
+        if (nameFilter && !activity.name.toLowerCase().includes(nameFilter)) return false;
+        return true;
+    });
+
+    const scored = candidates.map((activity) => {
+        let score = 0;
+        if (hasDistance) {
+            if (!Number.isFinite(activity.distanceKm)) return { activity, score: Number.POSITIVE_INFINITY };
+            score += getRelativeDifference(activity.distanceKm, targetDistanceKm);
+        }
+        if (hasDurationMinutes) {
+            if (!Number.isFinite(activity.durationHours)) return { activity, score: Number.POSITIVE_INFINITY };
+            score += getRelativeDifference(activity.durationHours, targetDurationHours);
+        }
+        if (hasElevation) {
+            if (!Number.isFinite(activity.elevationM)) return { activity, score: Number.POSITIVE_INFINITY };
+            score += getRelativeDifference(activity.elevationM, targetElevationM);
+        }
+
+        if (hasCotation) {
+            if (!Number.isFinite(activity.cotationIndex)) return { activity, score: Number.POSITIVE_INFINITY };
+            const diff = Math.abs(activity.cotationIndex - targetCotationIndex);
+            // Normalize "distance" on discrete T1..T6 to 0..1.
+            score += diff / 5;
+        }
+        return { activity, score };
+    });
+
+    return scored
+        .filter((entry) => Number.isFinite(entry.score))
+        .sort((a, b) => a.score - b.score)
+        .slice(0, 3)
+        .map((entry) => entry.activity);
+}
+
+function buildRecommendationReply(matches) {
+    const count = matches.length;
+    if (count === 0) {
+        return "Je n'ai pas trouvé d'aventure accomplie qui corresponde à ta demande.";
+    }
+    const intro = count === 1
+        ? "J'ai trouvé 1 aventure qui pourrait te convenir :"
+        : `J'ai trouvé ${count} aventures qui pourraient te convenir :`;
+    const lines = matches.map((activity) => (`${activity.name} : ${formatDistanceForChat(activity.distanceKm)}km, ${activity.durationLabel || formatHoursForChat(activity.durationHours)}, ${formatElevationForChat(activity.elevationM)}m D+`));
+    return `${intro}\n\n${lines.join('\n')}`;
+}
+
+function addChatMessage(messagesEl, text, role) {
+    const bubble = document.createElement('div');
+    bubble.className = `skadi-message ${role === 'user' ? 'skadi-user' : 'skadi-bot'}`;
+    bubble.textContent = text;
+    messagesEl.appendChild(bubble);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function initSkadiChatbot() {
+    const toggleBtn = document.getElementById('skadi-chat-toggle');
+    const panel = document.getElementById('skadi-chat-panel');
+    const form = document.getElementById('skadi-chat-form');
+    const input = document.getElementById('skadi-chat-input');
+    const sendBtn = document.getElementById('skadi-chat-send');
+    const messagesEl = document.getElementById('skadi-chat-messages');
+    if (!toggleBtn || !panel || !form || !input || !sendBtn || !messagesEl) return;
+
+    toggleBtn.addEventListener('click', function() {
+        const isHidden = panel.classList.contains('hidden');
+        if (isHidden) {
+            panel.classList.remove('hidden');
+            panel.setAttribute('aria-hidden', 'false');
+            toggleBtn.setAttribute('aria-expanded', 'true');
+            if (!skadiHelpShown) {
+                addChatMessage(messagesEl, SKADI_HELP_MESSAGE, 'bot');
+                skadiHelpShown = true;
+            }
+            input.focus();
+        } else {
+            panel.classList.add('hidden');
+            panel.setAttribute('aria-hidden', 'true');
+            toggleBtn.setAttribute('aria-expanded', 'false');
+        }
+    });
+
+    form.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        const userText = input.value.trim();
+        if (!userText) return;
+        addChatMessage(messagesEl, userText, 'user');
+        input.value = '';
+        sendBtn.disabled = true;
+        input.disabled = true;
+
+        try {
+            const isHelpRequest = /\baide\b/i.test(userText.trim());
+            if (isHelpRequest) {
+                addChatMessage(messagesEl, SKADI_HELP_MESSAGE, 'bot');
+                return;
+            }
+
+            const isResetRequest = /\b(reset|tous|toute|toutes)\b/i.test(userText.trim());
+            if (isResetRequest) {
+                resetMapForChatQuery();
+                addChatMessage(messagesEl, "Je t'affiche toutes les activités.", 'bot');
+                return;
+            }
+
+            resetMapForChatQuery();
+            const mode = detectSkadiMode(userText);
+
+            if (mode === 'recommendation') {
+                const targets = extractRecommendationTargets(userText);
+                const hasAtLeastOneTarget = Number.isFinite(targets.distanceKm) || Number.isFinite(targets.durationHours) || Number.isFinite(targets.elevationM) || Number.isFinite(targets.cotationIndex);
+                if (!hasAtLeastOneTarget) {
+                    addChatMessage(messagesEl, "Je n'ai pas réussi à extraire une distance, une durée, un dénivelé ou une cotation. Tu peux préciser avec un nombre (ex: 15km, 3 heures, 1000m, T3).", 'bot');
+                    return;
+                }
+                const parsed = parseFilterIntent(userText);
+                const matches = getRecommendationMatches({
+                    filters: {
+                        season: parsed.season !== 'all' ? parsed.season : null,
+                        type: parsed.activityType !== 'all' ? parsed.activityType : null,
+                        name: null
+                    },
+                    targets: {
+                        distance_km: targets.distanceKm,
+                        duration_min: Number.isFinite(targets.durationHours) ? targets.durationHours * 60 : null,
+                        elevation_m: targets.elevationM,
+                        cotation_index: targets.cotationIndex
+                    }
+                });
+                const selection = new Set(matches.map((item) => item.key));
+                applyRecommendationVisibility(selection);
+                addChatMessage(messagesEl, buildRecommendationReply(matches), 'bot');
+            } else {
+                const parsed = parseFilterIntent(userText);
+                applyFilters({
+                    status: parsed.status,
+                    season: parsed.season,
+                    activityType: parsed.activityType,
+                    name: parsed.name
+                });
+                const count = getVisibleActivityCount();
+                addChatMessage(messagesEl, buildFilterConfirmation(parsed, count), 'bot');
+            }
+        } catch (error) {
+            console.error('Skadi chatbot error:', error);
+            addChatMessage(messagesEl, "Je n'ai pas pu traiter ta demande pour le moment. Réessaie avec une formulation plus simple.", 'bot');
+        } finally {
+            sendBtn.disabled = false;
+            input.disabled = false;
+            input.focus();
+        }
     });
 }
 
@@ -928,9 +1515,11 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelector('#tabs a[data-tab="summits"]').classList.add('active');
 
     // Show filters for the summit tab
-    document.getElementById('filters-container').classList.remove('hidden');
+    const filtersContainer = document.getElementById('filters-container');
+    if (filtersContainer) filtersContainer.classList.remove('hidden');
     renderLegendContent();
     setLegendEnabled(true);
+    initSkadiChatbot();
     const legendToggleBtn = document.getElementById('legend-toggle-btn');
     const legendPanel = document.getElementById('map-legend');
     if (legendToggleBtn && legendPanel) {
