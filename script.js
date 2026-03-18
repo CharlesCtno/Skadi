@@ -77,6 +77,51 @@ function parseCotationToIndex(gradeRaw) {
     return Number.isFinite(idx) ? idx : null;
 }
 
+function extractLocationFromMessage(message) {
+    const text = (message || '').trim();
+    if (!text) return null;
+
+    // Triggers (case-insensitive) + capture the following place name.
+    // Stop at punctuation or at the stop words: "avec", "et", "pour", "de" (word).
+    const locationRegex = /(?:près de|côté de|depuis|au-dessus de|à côté de|vers|dans les|dans le|en partant de)\s+(.+?)(?=$|[.,;:!?]|\b(avec|et|pour|de)\b)/i;
+    const match = text.match(locationRegex);
+    if (!match) return null;
+
+    const placeName = (match[1] || '').trim().replace(/^["']|["']$/g, '').trim();
+    return placeName || null;
+}
+
+function haversineDistanceKm(lat1, lon1, lat2, lon2) {
+    // Haversine formula (earth radius in km).
+    const R = 6371;
+    const toRad = (deg) => deg * (Math.PI / 180);
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+async function geocodePlaceName(placeName) {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(placeName)}&format=json&limit=1`;
+    const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+            // Note: browsers may ignore custom User-Agent header.
+            'User-Agent': 'SkadiApp/1.0'
+        }
+    });
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) return null;
+    const lat = parseFloat(data[0].lat);
+    const lon = parseFloat(data[0].lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    return { lat, lon };
+}
+
 // Function to format duration for popup/chat display.
 // - If the sheet stores "X jour(s)" / "X j", keep it as days (do not convert to hours).
 // - Otherwise format numeric hours as "HhMM".
@@ -754,6 +799,9 @@ function loadData() {
                             elevationM: Number.isFinite(elevationM) ? elevationM : null,
                             season: season || null,
                             type: type || null,
+                // Summit coordinates used for location-based recommendations.
+                summitLat: Number.isFinite(summitLatitude) ? summitLatitude : null,
+                summitLon: Number.isFinite(summitLongitude) ? summitLongitude : null,
                             status: hasStatusCol && (statusColLower === 'to do' || statusColLower === 'à faire' || statusColLower === 'a faire') ? 'to do' : 'completed',
                             dataType: currentTab
                         });
@@ -1071,9 +1119,10 @@ une distance (ex: "15km")
 une durée (ex: "3 heures" ou "2j" ou "1 jour")
 un dénivelé (ex: "1000m")
 une cotation (ex: "T3")
+une localisation (ex: "près de Lausanne")
 Tu peux aussi demander l'avis de Charles en mentionnant son prénom.
 
-Tu peux aussi combiner : "randonnée autour de 15km avec 1000m de dénivelé"`;
+Exemple: "randonnée près de Lausanne autour de 15km avec 1000m de dénivelé"`;
 let skadiHelpShown = false;
 
 function parseLocalizedNumber(raw) {
@@ -1090,7 +1139,8 @@ function detectSkadiMode(message) {
     const hasDuration = hasDurationHours || hasDurationDays;
     const hasElevation = /\b\d+(?:[.,]\d+)?\s*m\s*(de\s*d[eé]nivel[eé]|d\+)\b/i.test(text) || /\bd\+\b/i.test(text) || /\bd[eé]nivel[eé]\b/i.test(text) || /\bm\s*d\+\b/i.test(text);
     const hasCotation = /\bt\s*[1-6]\b/i.test(text);
-    return (hasDistance || hasDuration || hasElevation || hasCotation) ? 'recommendation' : 'filter';
+    const hasLocation = /(?:près de|côté de|depuis|au-dessus de|à côté de|vers|dans les|dans le|en partant de)\s+/i.test(text);
+    return (hasDistance || hasDuration || hasElevation || hasCotation || hasLocation) ? 'recommendation' : 'filter';
 }
 
 function extractRecommendationTargets(message) {
@@ -1281,6 +1331,7 @@ function getRecommendationMatches(intent) {
     const durationMinTarget = targets.duration_min;
     const elevationTarget = targets.elevation_m;
     const cotationIndexTarget = targets.cotation_index;
+    const location = intent && intent.location ? intent.location : null;
 
     const hasDistance = distanceTarget !== null && distanceTarget !== undefined && Number.isFinite(Number(distanceTarget));
     const hasDurationMinutes = durationMinTarget !== null && durationMinTarget !== undefined && Number.isFinite(Number(durationMinTarget));
@@ -1296,17 +1347,38 @@ function getRecommendationMatches(intent) {
     const typeFilter = normalizeActivityTypeValue(filters.type || null);
     const nameFilter = (filters.name || '').trim().toLowerCase();
 
+    const hasLocation = !!(location && Number.isFinite(location.lat) && Number.isFinite(location.lon) && location.name);
+
     const candidates = activityCatalog.filter((activity) => {
         if (activity.dataType !== currentTab) return false;
         if (activity.status !== 'completed') return false;
+        if (hasLocation) {
+            if (!Number.isFinite(activity.summitLat) || !Number.isFinite(activity.summitLon)) return false;
+        }
         if (seasonFilter && normalizeSeasonValue(activity.season) !== normalizeSeasonValue(seasonFilter)) return false;
         if (typeFilter && typeFilter !== 'all' && normalizeActivityTypeValue(activity.type) !== typeFilter) return false;
         if (nameFilter && !activity.name.toLowerCase().includes(nameFilter)) return false;
         return true;
     });
 
+    // Compute reference_distance for location normalization (max distance among candidates).
+    let referenceDistanceKm = null;
+    if (hasLocation) {
+        let max = 0;
+        for (const activity of candidates) {
+            const distKm = haversineDistanceKm(location.lat, location.lon, activity.summitLat, activity.summitLon);
+            if (Number.isFinite(distKm)) max = Math.max(max, distKm);
+        }
+        referenceDistanceKm = max > 0 ? max : 0.0001; // avoid division by zero
+    }
+
     const scored = candidates.map((activity) => {
         let score = 0;
+        let distanceToLocationKm = null;
+        if (hasLocation) {
+            distanceToLocationKm = haversineDistanceKm(location.lat, location.lon, activity.summitLat, activity.summitLon);
+        }
+
         if (hasDistance) {
             if (!Number.isFinite(activity.distanceKm)) return { activity, score: Number.POSITIVE_INFINITY };
             score += getRelativeDifference(activity.distanceKm, targetDistanceKm);
@@ -1326,25 +1398,49 @@ function getRecommendationMatches(intent) {
             // Normalize "distance" on discrete T1..T6 to 0..1.
             score += diff / 5;
         }
-        return { activity, score };
+
+        if (hasLocation) {
+            if (!Number.isFinite(distanceToLocationKm)) return { activity, score: Number.POSITIVE_INFINITY };
+            score += 3 * (distanceToLocationKm / referenceDistanceKm);
+        }
+        return { activity, score, distanceToLocationKm };
     });
 
     return scored
         .filter((entry) => Number.isFinite(entry.score))
         .sort((a, b) => a.score - b.score)
         .slice(0, 3)
-        .map((entry) => entry.activity);
+        .map((entry) => {
+            if (!hasLocation) return entry.activity;
+            return {
+                ...entry.activity,
+                distanceToLocationKm: entry.distanceToLocationKm
+            };
+        });
 }
 
-function buildRecommendationReply(matches) {
+function buildRecommendationReply(matches, locationName = null) {
     const count = matches.length;
     if (count === 0) {
         return "Je n'ai pas trouvé d'aventure accomplie qui corresponde à ta demande.";
     }
-    const intro = count === 1
-        ? "J'ai trouvé 1 aventure qui pourrait te convenir :"
-        : `J'ai trouvé ${count} aventures qui pourraient te convenir :`;
-    const lines = matches.map((activity) => (`${activity.name} : ${formatDistanceForChat(activity.distanceKm)}km, ${activity.durationLabel || formatHoursForChat(activity.durationHours)}, ${formatElevationForChat(activity.elevationM)}m D+`));
+    let intro = '';
+    if (locationName) {
+        intro = count === 1
+            ? `J'ai trouvé 1 aventure près de ${locationName} qui pourrait te convenir :`
+            : `J'ai trouvé ${count} aventures près de ${locationName} qui pourraient te convenir :`;
+    } else {
+        intro = count === 1
+            ? "J'ai trouvé 1 aventure qui pourrait te convenir :"
+            : `J'ai trouvé ${count} aventures qui pourraient te convenir :`;
+    }
+
+    const lines = matches.map((activity) => {
+        const base = `${activity.name} : ${formatDistanceForChat(activity.distanceKm)}km, ${activity.durationLabel || formatHoursForChat(activity.durationHours)}, ${formatElevationForChat(activity.elevationM)}m D+`;
+        if (!locationName) return base;
+        if (!Number.isFinite(activity.distanceToLocationKm)) return base;
+        return `${base}, à ${formatDistanceForChat(activity.distanceToLocationKm)}km de ${locationName}`;
+    });
     return `${intro}\n\n${lines.join('\n')}`;
 }
 
@@ -1369,6 +1465,7 @@ function initSkadiChatbot() {
     let skadiWaitingForContactName = false;
     let skadiLastMode2Request = null;
     let skadiLastMode2Reply = null;
+    let skadiLastMode2LocationName = null;
 
     toggleBtn.addEventListener('click', function() {
         const isHidden = panel.classList.contains('hidden');
@@ -1388,6 +1485,7 @@ function initSkadiChatbot() {
             skadiWaitingForContactName = false;
             skadiLastMode2Request = null;
             skadiLastMode2Reply = null;
+            skadiLastMode2LocationName = null;
         }
     });
 
@@ -1415,7 +1513,8 @@ function initSkadiChatbot() {
                 const formUrl = 'https://docs.google.com/forms/d/e/1FAIpQLScbR7X3_zDe-gV0eqxHzgWu1kEqVbvuSdgu2iLO1JiiUg26jg/formResponse';
                 const params = new URLSearchParams();
                 params.append('entry.1137624776', contactName);
-                params.append('entry.869668511', skadiLastMode2Request || '');
+                const originalRequestForForm = `${skadiLastMode2Request || ''}${skadiLastMode2LocationName ? ` (lieu: ${skadiLastMode2LocationName})` : ''}`.trim();
+                params.append('entry.869668511', originalRequestForForm);
                 params.append('entry.2101176791', skadiLastMode2Reply || '');
                 params.append('entry.2066843226', todayStr);
 
@@ -1463,10 +1562,33 @@ function initSkadiChatbot() {
             const mode = detectSkadiMode(userText);
 
             if (mode === 'recommendation') {
+                // Reset contact-flow memory whenever a new Mode 2 recommendation is made.
+                skadiWaitingForContactName = false;
+                skadiLastMode2Request = null;
+                skadiLastMode2Reply = null;
+                skadiLastMode2LocationName = null;
+
+                const placeName = extractLocationFromMessage(userText);
+                let location = null;
+                if (placeName) {
+                    const coords = await geocodePlaceName(placeName);
+                    if (!coords) {
+                        addChatMessage(messagesEl, "Je n'ai pas trouvé l'endroit que tu m'as indiqué. Tu peux reformuler ou essayer un nom de lieu plus précis.", 'bot');
+                        return;
+                    }
+                    location = { ...coords, name: placeName };
+                }
+
                 const targets = extractRecommendationTargets(userText);
-                const hasAtLeastOneTarget = Number.isFinite(targets.distanceKm) || Number.isFinite(targets.durationHours) || Number.isFinite(targets.elevationM) || Number.isFinite(targets.cotationIndex);
+                const hasAtLeastOneTarget =
+                    Number.isFinite(targets.distanceKm) ||
+                    Number.isFinite(targets.durationHours) ||
+                    Number.isFinite(targets.elevationM) ||
+                    Number.isFinite(targets.cotationIndex) ||
+                    !!location;
+
                 if (!hasAtLeastOneTarget) {
-                    addChatMessage(messagesEl, "Je n'ai pas réussi à extraire une distance, une durée, un dénivelé ou une cotation. Tu peux préciser avec un nombre (ex: 15km, 3 heures, 1000m, T3).", 'bot');
+                    addChatMessage(messagesEl, "Je n'ai pas réussi à extraire une distance, une durée, un dénivelé, une cotation ou un lieu. Tu peux préciser avec un exemple (ex: 15km, 3 heures, 1000m, T3, près de Lausanne).", 'bot');
                     return;
                 }
                 const parsed = parseFilterIntent(userText);
@@ -1481,14 +1603,16 @@ function initSkadiChatbot() {
                         duration_min: Number.isFinite(targets.durationHours) ? targets.durationHours * 60 : null,
                         elevation_m: targets.elevationM,
                         cotation_index: targets.cotationIndex
-                    }
+                    },
+                    location
                 });
                 const selection = new Set(matches.map((item) => item.key));
                 applyRecommendationVisibility(selection);
                 // Store for the "contact Charles" flow.
-                const recommendationReplyText = buildRecommendationReply(matches);
+                const recommendationReplyText = buildRecommendationReply(matches, location ? location.name : null);
                 skadiLastMode2Request = userText;
                 skadiLastMode2Reply = recommendationReplyText;
+                skadiLastMode2LocationName = location ? location.name : null;
                 skadiWaitingForContactName = false;
 
                 addChatMessage(messagesEl, recommendationReplyText, 'bot');
