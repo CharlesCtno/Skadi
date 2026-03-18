@@ -1137,7 +1137,13 @@ function detectSkadiMode(message) {
     const hasDurationHours = /\b\d+(?:[.,]\d+)?\s*(heure(?:s)?|h)\b/i.test(text) || /\b\d+h\d{1,2}\b/i.test(text);
     const hasDurationDays = /\b\d+(?:[.,]\d+)?\s*(jour(?:s)?|j)\b/i.test(text);
     const hasDuration = hasDurationHours || hasDurationDays;
-    const hasElevation = /\b\d+(?:[.,]\d+)?\s*m\s*(de\s*d[eé]nivel[eé]|d\+)\b/i.test(text) || /\bd\+\b/i.test(text) || /\bd[eé]nivel[eé]\b/i.test(text) || /\bm\s*d\+\b/i.test(text);
+    // Elevation: accept common explicit patterns + a bare "400m" / "400 m " as elevation meters.
+    const hasElevation =
+        /\b\d+(?:[.,]\d+)?\s*m\s*(de\s*d[eé]nivel[eé]|d\+)\b/i.test(text) ||
+        /\bd\+\b/i.test(text) ||
+        /\bd[eé]nivel[eé]\b/i.test(text) ||
+        /\bm\s*d\+\b/i.test(text) ||
+        /\b\d+(?:[.,]\d+)?\s*m\b/i.test(text);
     const hasCotation = /\bt\s*[1-6]\b/i.test(text);
     const hasLocation = /(?:près de|côté de|depuis|au-dessus de|à côté de|vers|dans les|dans le|en partant de)\s+/i.test(text);
     return (hasDistance || hasDuration || hasElevation || hasCotation || hasLocation) ? 'recommendation' : 'filter';
@@ -1181,6 +1187,8 @@ function extractRecommendationTargets(message) {
     }
 
     const elevationPatterns = [
+        // Accept bare "400m" / "400 m " as elevation meters.
+        /(\d+(?:[.,]\d+)?)\s*m\b/i,
         /(\d+(?:[.,]\d+)?)\s*m\s*de\s*d[eé]nivel[eé]/i,
         /(\d+(?:[.,]\d+)?)\s*m\s*d\+/i,
         /(\d+(?:[.,]\d+)?)\s*d\+/i,
