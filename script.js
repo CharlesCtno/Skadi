@@ -1054,6 +1054,7 @@ une distance (ex: "15km")
 une durée (ex: "3 heures" ou "2j" ou "1 jour")
 un dénivelé (ex: "1000m")
 une cotation (ex: "T3")
+Tu peux aussi demander l'avis de Charles en mentionnant son prénom.
 
 Tu peux aussi combiner : "randonnée autour de 15km avec 1000m de dénivelé"`;
 let skadiHelpShown = false;
@@ -1347,6 +1348,11 @@ function initSkadiChatbot() {
     const messagesEl = document.getElementById('skadi-chat-messages');
     if (!toggleBtn || !panel || !form || !input || !sendBtn || !messagesEl) return;
 
+    // Session-scoped state for the "contact Charles" flow.
+    let skadiWaitingForContactName = false;
+    let skadiLastMode2Request = null;
+    let skadiLastMode2Reply = null;
+
     toggleBtn.addEventListener('click', function() {
         const isHidden = panel.classList.contains('hidden');
         if (isHidden) {
@@ -1362,6 +1368,9 @@ function initSkadiChatbot() {
             panel.classList.add('hidden');
             panel.setAttribute('aria-hidden', 'true');
             toggleBtn.setAttribute('aria-expanded', 'false');
+            skadiWaitingForContactName = false;
+            skadiLastMode2Request = null;
+            skadiLastMode2Reply = null;
         }
     });
 
@@ -1375,6 +1384,38 @@ function initSkadiChatbot() {
         input.disabled = true;
 
         try {
+            // Waiting state: the next user message is treated as their name.
+            if (skadiWaitingForContactName) {
+                const contactName = userText.trim();
+                skadiWaitingForContactName = false;
+
+                const now = new Date();
+                const yyyy = now.getFullYear();
+                const mm = String(now.getMonth() + 1).padStart(2, '0');
+                const dd = String(now.getDate()).padStart(2, '0');
+                const todayStr = `${yyyy}-${mm}-${dd}`;
+
+                const formUrl = 'https://docs.google.com/forms/d/e/1FAIpQLScbR7X3_zDe-gV0eqxHzgWu1kEqVbvuSdgu2iLO1JiiUg26jg/formResponse';
+                const params = new URLSearchParams();
+                params.append('entry.1137624776', contactName);
+                params.append('entry.869668511', skadiLastMode2Request || '');
+                params.append('entry.2101176791', skadiLastMode2Reply || '');
+                params.append('entry.2066843226', todayStr);
+
+                // no-cors: we can't read the response, but we assume success and always show confirmation.
+                void fetch(formUrl, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: params.toString()
+                }).catch(() => {});
+
+                addChatMessage(messagesEl, "Parfait ! Charles reviendra vers toi dès que possible 😊", 'bot');
+                return;
+            }
+
             const isHelpRequest = /\baide\b/i.test(userText.trim());
             if (isHelpRequest) {
                 addChatMessage(messagesEl, SKADI_HELP_MESSAGE, 'bot');
@@ -1385,6 +1426,19 @@ function initSkadiChatbot() {
             if (isResetRequest) {
                 resetMapForChatQuery();
                 addChatMessage(messagesEl, "Je t'affiche toutes les activités.", 'bot');
+                return;
+            }
+
+            // Contact flow trigger: "charles" after at least one Mode 2 recommendation.
+            const isCharlesTrigger = /\bcharles\b/i.test(userText);
+            if (isCharlesTrigger) {
+                if (!skadiLastMode2Request || !skadiLastMode2Reply) {
+                    addChatMessage(messagesEl, "Fais-moi d'abord une recherche et je pourrai transmettre mes suggestions à Charles !", 'bot');
+                    return;
+                }
+
+                addChatMessage(messagesEl, "Quel est ton petit nom ?", 'bot');
+                skadiWaitingForContactName = true;
                 return;
             }
 
@@ -1414,7 +1468,13 @@ function initSkadiChatbot() {
                 });
                 const selection = new Set(matches.map((item) => item.key));
                 applyRecommendationVisibility(selection);
-                addChatMessage(messagesEl, buildRecommendationReply(matches), 'bot');
+                // Store for the "contact Charles" flow.
+                const recommendationReplyText = buildRecommendationReply(matches);
+                skadiLastMode2Request = userText;
+                skadiLastMode2Reply = recommendationReplyText;
+                skadiWaitingForContactName = false;
+
+                addChatMessage(messagesEl, recommendationReplyText, 'bot');
             } else {
                 const parsed = parseFilterIntent(userText);
                 applyFilters({
