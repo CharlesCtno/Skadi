@@ -300,12 +300,20 @@
         <button id="skadi-chat-send" type="submit">Envoyer</button>
       </form>
     </section>
+    <aside id="journal-panel" class="hidden" aria-hidden="true">
+      <div id="journal-panel-header">
+        <h2 id="journal-title"></h2>
+        <button id="journal-close-btn" type="button" aria-label="Fermer le récit">×</button>
+      </div>
+      <div id="journal-content"></div>
+    </aside>
   </div>
 
   <!-- JavaScript -->
   <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
   <script src="vendor/photoswipe/photoswipe.umd.min.js"></script>
   <script src="vendor/photoswipe/photoswipe-lightbox.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

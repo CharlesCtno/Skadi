@@ -15,6 +15,64 @@ let latestFilterState = {
     season: 'all',
     name: ''
 };
+let journalPanelOpen = false;
+
+function openJournalPanel(activityName, journalPath) {
+    const tabContent = document.getElementById('tab-content');
+    const panel = document.getElementById('journal-panel');
+    const titleEl = document.getElementById('journal-title');
+    const contentEl = document.getElementById('journal-content');
+    if (!tabContent || !panel || !titleEl || !contentEl) return;
+
+    const title = String(activityName || '').trim() || 'Récit';
+    titleEl.textContent = title;
+    contentEl.innerHTML = 'Chargement du récit...';
+
+    panel.classList.remove('hidden');
+    panel.setAttribute('aria-hidden', 'false');
+    tabContent.classList.add('journal-open');
+    journalPanelOpen = true;
+
+    // Give CSS transition time, then resize Leaflet canvas.
+    setTimeout(() => {
+        if (map) map.invalidateSize();
+    }, 320);
+
+    const safePath = String(journalPath || '').trim();
+    if (!safePath || !/^journal\//i.test(safePath)) {
+        contentEl.textContent = "Le récit de cette activité n'est pas encore disponible.";
+        return;
+    }
+
+    fetch(safePath)
+        .then((res) => {
+            if (!res.ok) throw new Error(`journal fetch failed: ${res.status}`);
+            return res.text();
+        })
+        .then((md) => {
+            if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
+                contentEl.innerHTML = marked.parse(md);
+            } else {
+                contentEl.textContent = md;
+            }
+        })
+        .catch((_err) => {
+            contentEl.textContent = "Le récit de cette activité n'est pas encore disponible.";
+        });
+}
+
+function closeJournalPanel() {
+    const tabContent = document.getElementById('tab-content');
+    const panel = document.getElementById('journal-panel');
+    if (!tabContent || !panel) return;
+    panel.classList.add('hidden');
+    panel.setAttribute('aria-hidden', 'true');
+    tabContent.classList.remove('journal-open');
+    journalPanelOpen = false;
+    setTimeout(() => {
+        if (map) map.invalidateSize();
+    }, 320);
+}
 
 // Initialize map
 function initMap() {
@@ -273,16 +331,17 @@ function normalizeDecimal(value) {
 function processSheetToSummitsRows(sheetCsvText) {
     const lines = sheetCsvText.split(/\r?\n/).filter(l => l.length > 0);
     const dataLines = lines.slice(3); // skip rows 1–3
-    const header = 'Status,Name,Altitude [m],Summit Latitude,Summit Longitude,Season,Type,Grade,Distance [km],Duration [h],Elevation Gain [m],GPX File,Project,Activity URL,Photo URLs';
+    const header = 'Status,Name,Altitude [m],Summit Latitude,Summit Longitude,Season,Type,Grade,Distance [km],Duration [h],Elevation Gain [m],GPX File,Project,Activity URL,Photo URLs,Journal';
     let lastActivity = null;
     let lastSummit = null;
     const outRows = [];
 
     for (let i = 0; i < dataLines.length; i++) {
         let row = parseCsvLine(dataLines[i]);
-        if (row.length < 19) row = row.concat(Array(19 - row.length).fill(''));
+        if (row.length < 20) row = row.concat(Array(20 - row.length).fill(''));
         const cToO = row.slice(2, 16);
         let photoUrls = (row[18] || '').trim();  // column S
+        let journalEntry = (row[19] || '').trim(); // column T
         let [status, name, altitude, summitLat, summitLon, season, type_, grade, distance, duration, elevationGain, gpxFile, project, activityUrl] = cToO;
         let nameStripped = (name || '').trim();
         const projectStripped = (project || '').trim();
@@ -305,7 +364,7 @@ function processSheetToSummitsRows(sheetCsvText) {
 
         const sameActivity = !isToDo && lastActivity != null && gpxFileStripped && gpxFileStripped === lastActivity[0];
         if (sameActivity) {
-            const [, lastSeason, lastType, lastGrade, lastDistance, lastDuration, lastElevationGain, , lastActivityUrl, lastPhotoUrls] = lastActivity;
+            const [, lastSeason, lastType, lastGrade, lastDistance, lastDuration, lastElevationGain, , lastActivityUrl, lastPhotoUrls, lastJournalEntry] = lastActivity;
             if (!seasonStripped) { season = lastSeason; seasonStripped = season; }
             if (!(type_ || '').trim()) type_ = lastType;
             if (!(grade || '').trim()) grade = lastGrade;
@@ -314,10 +373,11 @@ function processSheetToSummitsRows(sheetCsvText) {
             if (!(elevationGain || '').trim()) elevationGain = lastElevationGain;
             if (!(activityUrl || '').trim()) activityUrl = lastActivityUrl;
             if (!photoUrls) photoUrls = lastPhotoUrls || '';
+            if (!journalEntry) journalEntry = lastJournalEntry || '';
         }
 
         if (gpxFileStripped && !isToDo) {
-            lastActivity = [gpxFileStripped, (season || '').trim(), (type_ || '').trim(), (grade || '').trim(), (distance || '').trim(), (duration || '').trim(), (elevationGain || '').trim(), (project || '').trim(), (activityUrl || '').trim(), photoUrls];
+            lastActivity = [gpxFileStripped, (season || '').trim(), (type_ || '').trim(), (grade || '').trim(), (distance || '').trim(), (duration || '').trim(), (elevationGain || '').trim(), (project || '').trim(), (activityUrl || '').trim(), photoUrls, journalEntry];
         }
 
         altitude = normalizeDecimal(altitude);
@@ -327,9 +387,9 @@ function processSheetToSummitsRows(sheetCsvText) {
         duration = normalizeDecimal(duration);
         elevationGain = normalizeDecimal(elevationGain);
 
-        let outSeason, outType, outGrade, outDistance, outDuration, outElevationGain, outGpxFile, outActivityUrl, outPhotoUrls;
+        let outSeason, outType, outGrade, outDistance, outDuration, outElevationGain, outGpxFile, outActivityUrl, outPhotoUrls, outJournalEntry;
         if (isToDo) {
-            outSeason = outType = outGrade = outDistance = outDuration = outElevationGain = outGpxFile = outActivityUrl = outPhotoUrls = '';
+            outSeason = outType = outGrade = outDistance = outDuration = outElevationGain = outGpxFile = outActivityUrl = outPhotoUrls = outJournalEntry = '';
         } else {
             outSeason = (season || '').trim();
             outType = (type_ || '').trim();
@@ -340,10 +400,11 @@ function processSheetToSummitsRows(sheetCsvText) {
             outGpxFile = gpxFileStripped;
             outActivityUrl = (activityUrl || '').trim();
             outPhotoUrls = photoUrls;
+            outJournalEntry = journalEntry;
         }
 
         const escapeCsv = (v) => (v == null ? '' : String(v).includes(',') ? '"' + String(v).replace(/"/g, '""') + '"' : String(v));
-        outRows.push([(status || '').trim(), nameStripped, altitude, summitLat, summitLon, outSeason, outType, outGrade, outDistance, outDuration, outElevationGain, outGpxFile, projectStripped || 'No Project', outActivityUrl, outPhotoUrls].map(escapeCsv).join(','));
+        outRows.push([(status || '').trim(), nameStripped, altitude, summitLat, summitLon, outSeason, outType, outGrade, outDistance, outDuration, outElevationGain, outGpxFile, projectStripped || 'No Project', outActivityUrl, outPhotoUrls, outJournalEntry].map(escapeCsv).join(','));
         lastSummit = [nameStripped, altitude, summitLat, summitLon];
     }
 
@@ -382,6 +443,26 @@ function parsePhotoUrlsFromColumnS(value) {
     return valid;
 }
 
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// Parse column T:
+// - empty => none
+// - starts with "journal/" => markdown path
+// - otherwise => inline plain text for popup
+function parseJournalEntry(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return { kind: 'none', value: '' };
+    if (/^journal\//i.test(raw)) return { kind: 'path', value: raw };
+    return { kind: 'text', value: raw };
+}
+
 // Returns display text for column P link, or null if URL should be skipped.
 function getActivityLinkText(url) {
     const u = (url || '').trim();
@@ -402,18 +483,26 @@ function buildSummitPopupContent(name, altitude, project, status) {
 }
 
 // Build popup HTML once for track layers (used by both visible and invisible layers)
-function buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType, activityUrl, photoUrlsColumnS) {
+function buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType, activityUrl, photoUrlsColumnS, journalColumnT) {
     const photoUrls = parsePhotoUrlsFromColumnS(photoUrlsColumnS);
     const hasPhotos = photoUrls.length > 0;
     const photoBlock = hasPhotos
         ? (() => { const escaped = photoUrls.map(u => u.replace(/"/g, '&quot;')).join('|'); return ` <span class="popup-photos-row" data-photo-urls="${escaped}"><button type="button" class="popup-photos-btn" aria-label="Voir les photos">📸</button></span>`; })()
         : '';
-    let html = `<b>${gpxName}</b>${photoBlock}<br><b>Saison :</b> ${season}`;
+    const journal = parseJournalEntry(journalColumnT);
+    const journalButtonBlock = journal.kind === 'path'
+        ? ` <span class="popup-journal-row" data-journal-path="${escapeHtml(journal.value)}" data-journal-title="${escapeHtml(gpxName)}"><button type="button" class="popup-journal-btn" aria-label="Voir le récit">📖</button></span>`
+        : '';
+    const journalTextBlock = journal.kind === 'text'
+        ? `<p class="popup-journal-text">${escapeHtml(journal.value)}</p>`
+        : '';
+    let html = `<b>${gpxName}</b>${photoBlock}${journalButtonBlock}<br><b>Saison :</b> ${season}`;
     if (dataType !== 'bike') html += `<br><b>Type :</b> ${type}`;
     if (grade) html += `<br><b>Cotation :</b> ${grade}`;
     if (distance) html += `<br><b>Distance :</b> ${distance} km`;
     if (duration) html += `<br><b>Durée :</b> ${duration}`;
     if (elevationGain) html += `<br><b>Dénivelé :</b> ${elevationGain} m`;
+    html += journalTextBlock;
     const linkText = getActivityLinkText(activityUrl);
     if (linkText) {
         const href = (activityUrl || '').trim();
@@ -502,7 +591,7 @@ function setLegendEnabled(enabled) {
 }
 
 // Function to load GeoJSON files dynamically
-function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, elevationGain, gpxName, dataType, activityUrl, photoUrlsColumnS) {
+function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, elevationGain, gpxName, dataType, activityUrl, photoUrlsColumnS, journalColumnT) {
     const dataPath = dataType === 'bike' ? 'data/bike/processed/' : 'data/processed/';
     const gpxBaseName = normalizeGpxBaseName(gpxFile);
     if (!gpxBaseName) return;
@@ -511,7 +600,13 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
         return; // Skip if the file has already been loaded
     }
 
-    const popupContent = buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType, activityUrl, photoUrlsColumnS || '');
+    const popupContent = buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType, activityUrl, photoUrlsColumnS || '', journalColumnT || '');
+    const journalMeta = parseJournalEntry(journalColumnT);
+    const opensJournalDirectly = dataType === 'bike' && journalMeta.kind === 'path';
+    // Apply wider minimum popup only when column T is plain text.
+    const popupOptions = journalMeta.kind === 'text'
+        ? { className: 'journal-text-popup', minWidth: 520, maxWidth: 2000 }
+        : undefined;
 
     fetch(`${dataPath}${gpxBaseName}.geojson`)
         .then(response => {
@@ -525,10 +620,15 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
             const track = L.geoJSON(data, {
                 style: { color: color, weight: 3 },
                 onEachFeature: function(feature, layer) {
-                    layer.bindPopup(popupContent);
+                    if (!opensJournalDirectly) {
+                        layer.bindPopup(popupContent, popupOptions);
+                    }
                     layer.on('click', function() {
                         track.bringToFront();
                         layer.setStyle({ weight: 6 });
+                        if (opensJournalDirectly) {
+                            openJournalPanel(gpxName, journalMeta.value);
+                        }
                     });
                     layer.on('popupclose', function() {
                         layer.setStyle({ weight: 3 });
@@ -541,12 +641,17 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
                 style: { color: 'transparent', weight: 15, opacity: 0 },
                 interactive: true,
                 onEachFeature: function(feature, layer) {
-                    layer.bindPopup(popupContent);
+                    if (!opensJournalDirectly) {
+                        layer.bindPopup(popupContent, popupOptions);
+                    }
                     layer.on('click', function() {
                         track.bringToFront();
                         track.eachLayer(function(trackLayer) {
                             trackLayer.setStyle({ weight: 6 });
                         });
+                        if (opensJournalDirectly) {
+                            openJournalPanel(gpxName, journalMeta.value);
+                        }
                     });
                     layer.on('popupclose', function() {
                         track.eachLayer(function(trackLayer) {
@@ -652,7 +757,7 @@ function loadData() {
                 const isSummitsTab = currentTab === 'summits';
                 // Summits rows are generated by processSheetToSummitsRows with a fixed schema.
                 const hasStatusCol = isSummitsTab ? true : columns.length >= 13;
-                const minColumns = isSummitsTab ? 15 : 12;
+                const minColumns = isSummitsTab ? 16 : 12;
 
                 if (columns.length < minColumns) {
                     console.warn('Skipping malformed CSV row (not enough columns):', row);
@@ -681,6 +786,7 @@ function loadData() {
                 let project = normalizeProjectName(projectRaw || 'No Project');
                 let activityUrl = (columns[nameIdx + 12] || '').trim();
                 let photoUrls = (columns.length > nameIdx + 13) ? (columns[nameIdx + 13] || '').trim() : '';
+                let journalEntry = (columns.length > nameIdx + 14) ? (columns[nameIdx + 14] || '').trim() : '';
 
                 // Inherit activity data from previous row when this row has summit but empty activity (merged cells in sheet).
                 // Do not inherit into explicit "to do" rows: they often have no activity fields by design.
@@ -697,6 +803,7 @@ function loadData() {
                     }
                     activityUrl = lastActivity.activityUrl || activityUrl;
                     if (!photoUrls) photoUrls = lastActivity.photoUrls || '';
+                    if (!journalEntry) journalEntry = lastActivity.journalEntry || '';
                 } else if (gpxFileRaw || season) {
                     lastActivity = {
                         season,
@@ -708,7 +815,8 @@ function loadData() {
                         gpxFile: normalizeGpxBaseName(gpxFileRaw),
                         project,
                         activityUrl,
-                        photoUrls
+                        photoUrls,
+                        journalEntry
                     };
                 }
 
@@ -827,7 +935,8 @@ function loadData() {
                         gpxName,
                         currentTab,
                         activityUrl,
-                        photoUrls
+                        photoUrls,
+                        journalEntry
                     );
                 }
 
@@ -1043,6 +1152,7 @@ document.querySelectorAll('#tabs a').forEach(tab => {
 
         // Set current tab
         currentTab = this.getAttribute('data-tab');
+        closeJournalPanel();
 
         // Skadi must not appear nor influence the bike tab.
         // When switching to bikepacking, clear any active recommendation state so it doesn't hide layers.
@@ -1715,6 +1825,20 @@ document.body.addEventListener('click', function(e) {
     });
 }, true);
 
+// Journal button inside popup (summits + non-bike tracks with journal/ path)
+document.body.addEventListener('click', function(e) {
+    const btn = e.target.closest('.popup-journal-btn');
+    if (!btn) return;
+    const row = btn.closest('[data-journal-path]');
+    if (!row) return;
+    const journalPath = row.getAttribute('data-journal-path');
+    if (!journalPath) return;
+    const title = row.getAttribute('data-journal-title') || 'Récit';
+    e.preventDefault();
+    e.stopPropagation();
+    openJournalPanel(title, journalPath);
+}, true);
+
 // Initialize the app
 document.addEventListener('DOMContentLoaded', function() {
     initMap();
@@ -1731,6 +1855,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initSkadiChatbot();
     const legendToggleBtn = document.getElementById('legend-toggle-btn');
     const legendPanel = document.getElementById('map-legend');
+    const journalCloseBtn = document.getElementById('journal-close-btn');
     if (legendToggleBtn && legendPanel) {
         legendToggleBtn.addEventListener('click', function() {
             const isHidden = legendPanel.classList.contains('hidden');
@@ -1741,6 +1866,11 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 closeLegend();
             }
+        });
+    }
+    if (journalCloseBtn) {
+        journalCloseBtn.addEventListener('click', function() {
+            closeJournalPanel();
         });
     }
 
