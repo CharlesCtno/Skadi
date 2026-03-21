@@ -269,22 +269,22 @@
   cursor: default;
 }
 
-/* Journal panel */
+/* Journal panel — fixed; top/height set inline in script.js from <header> offsetHeight */
 #map {
-  transition: width 300ms ease;
+  transition: width 300ms ease, height 300ms ease;
 }
 
-#tab-content.journal-open #map {
+body.journal-open #map {
   width: 50%;
 }
 
 #journal-panel {
-  position: absolute;
+  position: fixed;
   top: 0;
   right: 0;
-  bottom: 0;
+  height: 100vh;
   width: 50%;
-  z-index: 1002;
+  z-index: 10050;
   background: #333;
   color: #fff;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.25);
@@ -355,8 +355,10 @@
 }
 
 @media (max-width: 767px) {
-  #tab-content.journal-open #map {
+  body.journal-open #map {
     width: 100%;
+    visibility: hidden;
+    pointer-events: none;
   }
 
   #journal-panel {

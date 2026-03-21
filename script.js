@@ -8,6 +8,9 @@ let gpxNameSet = new Set();
 let gpxNameToMarker = {};
 let currentTab = 'summits';
 let activityCatalog = [];
+/** @type {Record<string, string[]>} Keyed by sheet Name column (column D); bold keywords from journal (column T), lowercase. */
+let keywordCache = {};
+let keywordCacheBuilt = false;
 let activeRecommendationKeys = null;
 let latestFilterState = {
     activityType: 'all',
@@ -16,22 +19,109 @@ let latestFilterState = {
     name: ''
 };
 let journalPanelOpen = false;
+let journalLayoutResizeBound = false;
+
+/** Position journal panel below the main header; match map height to remaining viewport (header + tabs). */
+function applyJournalPanelLayout() {
+    const header = document.querySelector('header');
+    const tabs = document.querySelector('#tabs');
+    const panel = document.getElementById('journal-panel');
+    const mapEl = document.getElementById('map');
+    if (!header || !panel) return;
+
+    const headerH = header.offsetHeight;
+    const tabsH = tabs ? tabs.offsetHeight : 0;
+    const panelTop = headerH;
+    const panelH = Math.max(0, window.innerHeight - headerH);
+
+    panel.style.top = `${panelTop}px`;
+    panel.style.height = `${panelH}px`;
+    document.body.style.setProperty('--skadi-header-offset', `${headerH}px`);
+
+    if (mapEl) {
+        const mapH = Math.max(0, window.innerHeight - headerH - tabsH);
+        const isMobile = window.matchMedia('(max-width: 767px)').matches;
+        if (!isMobile) {
+            mapEl.style.height = `${mapH}px`;
+        } else {
+            mapEl.style.height = '';
+            mapEl.style.minHeight = '';
+        }
+    }
+}
+
+function clearJournalPanelLayout() {
+    const panel = document.getElementById('journal-panel');
+    const mapEl = document.getElementById('map');
+    if (panel) {
+        panel.style.top = '';
+        panel.style.height = '';
+    }
+    if (mapEl) {
+        mapEl.style.height = '';
+        mapEl.style.minHeight = '';
+    }
+    document.body.style.removeProperty('--skadi-header-offset');
+}
+
+function bindJournalLayoutResize() {
+    if (journalLayoutResizeBound) return;
+    journalLayoutResizeBound = true;
+    window.addEventListener('resize', function() {
+        if (document.body.classList.contains('journal-open')) {
+            applyJournalPanelLayout();
+            if (map) map.invalidateSize();
+        }
+    });
+}
+
+/** Resolve paths like journal/foo.md against the site root (current page URL), not the script URL. */
+function resolveJournalFetchUrl(journalRelativePath) {
+    const path = String(journalRelativePath || '').trim().replace(/^\/+/, '');
+    if (!path) return '';
+    return new URL(path, window.location.href).href;
+}
+
+/** Render Markdown to HTML using marked.js (UMD exposes various shapes across versions). */
+function renderMarkdownToHtml(md) {
+    const M = typeof marked !== 'undefined' ? marked : (typeof window !== 'undefined' ? window.marked : undefined);
+    if (!M) return null;
+    const text = String(md || '');
+    try {
+        if (typeof M.parse === 'function') {
+            const out = M.parse(text, { async: false });
+            if (out && typeof out.then === 'function') {
+                return out;
+            }
+            return typeof out === 'string' ? out : String(out);
+        }
+        if (typeof M === 'function') {
+            const out = M(text);
+            return typeof out === 'string' ? out : String(out);
+        }
+    } catch (_e) {
+        return null;
+    }
+    return null;
+}
 
 function openJournalPanel(activityName, journalPath) {
-    const tabContent = document.getElementById('tab-content');
     const panel = document.getElementById('journal-panel');
     const titleEl = document.getElementById('journal-title');
     const contentEl = document.getElementById('journal-content');
-    if (!tabContent || !panel || !titleEl || !contentEl) return;
+    if (!panel || !titleEl || !contentEl) return;
 
     const title = String(activityName || '').trim() || 'Récit';
     titleEl.textContent = title;
     contentEl.innerHTML = 'Chargement du récit...';
 
+    document.body.classList.add('journal-open');
+    journalPanelOpen = true;
+    bindJournalLayoutResize();
+    applyJournalPanelLayout();
+
     panel.classList.remove('hidden');
     panel.setAttribute('aria-hidden', 'false');
-    tabContent.classList.add('journal-open');
-    journalPanelOpen = true;
 
     // Give CSS transition time, then resize Leaflet canvas.
     setTimeout(() => {
@@ -44,17 +134,29 @@ function openJournalPanel(activityName, journalPath) {
         return;
     }
 
-    fetch(safePath)
+    const fetchUrl = resolveJournalFetchUrl(safePath);
+    fetch(fetchUrl)
         .then((res) => {
             if (!res.ok) throw new Error(`journal fetch failed: ${res.status}`);
             return res.text();
         })
         .then((md) => {
-            if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
-                contentEl.innerHTML = marked.parse(md);
-            } else {
+            const htmlOrPromise = renderMarkdownToHtml(md);
+            if (htmlOrPromise == null) {
                 contentEl.textContent = md;
+                return;
             }
+            if (typeof htmlOrPromise.then === 'function') {
+                htmlOrPromise
+                    .then((html) => {
+                        contentEl.innerHTML = typeof html === 'string' ? html : String(html);
+                    })
+                    .catch(() => {
+                        contentEl.textContent = md;
+                    });
+                return;
+            }
+            contentEl.innerHTML = htmlOrPromise;
         })
         .catch((_err) => {
             contentEl.textContent = "Le récit de cette activité n'est pas encore disponible.";
@@ -62,13 +164,13 @@ function openJournalPanel(activityName, journalPath) {
 }
 
 function closeJournalPanel() {
-    const tabContent = document.getElementById('tab-content');
     const panel = document.getElementById('journal-panel');
-    if (!tabContent || !panel) return;
+    if (!panel) return;
     panel.classList.add('hidden');
     panel.setAttribute('aria-hidden', 'true');
-    tabContent.classList.remove('journal-open');
+    document.body.classList.remove('journal-open');
     journalPanelOpen = false;
+    clearJournalPanelLayout();
     setTimeout(() => {
         if (map) map.invalidateSize();
     }, 320);
@@ -452,6 +554,12 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
+/** Plaintext column T for popups: escape HTML, then turn **bold** into <strong> (same raw source as keyword extraction). */
+function formatPlainJournalTextForPopupHtml(raw) {
+    const escaped = escapeHtml(raw || '');
+    return escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+}
+
 // Normalize column T (strip BOM, sheet formula prefix, invisible chars).
 function normalizeJournalCell(value) {
     return String(value || '')
@@ -473,6 +581,172 @@ function parseJournalEntry(value) {
         return { kind: 'path', value: 'journal/' + rest.replace(/^\/+/, '') };
     }
     return { kind: 'text', value: raw };
+}
+
+function tokenizeBoldSegmentToKeywords(seg, set) {
+    String(seg || '')
+        .split(/\s+/)
+        .forEach((w) => {
+            const t = w.toLowerCase().replace(/[^\p{L}\p{N}_-]/gu, '');
+            if (t.length > 0) set.add(t);
+        });
+}
+
+/** Extract bold phrases from Markdown/plain text; returns unique lowercase tokens. */
+function extractBoldKeywordsFromText(text) {
+    const set = new Set();
+    if (!text) return [];
+    const re1 = /\*\*(.*?)\*\*/g;
+    const re2 = /__(.*?)__/g;
+    let m;
+    while ((m = re1.exec(text)) !== null) {
+        tokenizeBoldSegmentToKeywords(m[1], set);
+    }
+    while ((m = re2.exec(text)) !== null) {
+        tokenizeBoldSegmentToKeywords(m[1], set);
+    }
+    return [...set];
+}
+
+function buildKeywordCacheInBackground(rows) {
+    const tasks = rows.map(({ columnDName, journalEntry }) => {
+        const key = (columnDName || '').trim();
+        const parsed = parseJournalEntry(journalEntry);
+        if (!key) return Promise.resolve({ key: '', words: [] });
+        if (parsed.kind === 'none') return Promise.resolve({ key, words: [] });
+        if (parsed.kind === 'text') {
+            const rawPlainJournal = parsed.value;
+            return Promise.resolve({ key, words: extractBoldKeywordsFromText(rawPlainJournal) });
+        }
+        const url = resolveJournalFetchUrl(parsed.value);
+        return fetch(url)
+            .then((r) => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            })
+            .then((md) => ({ key, words: extractBoldKeywordsFromText(md) }))
+            .catch((err) => {
+                console.warn('[Skadi] Journal keyword fetch failed:', url, err);
+                return { key, words: [] };
+            });
+    });
+    Promise.all(tasks).then((results) => {
+        keywordCache = {};
+        for (const { key, words } of results) {
+            if (!key) continue;
+            if (!keywordCache[key]) keywordCache[key] = [];
+            const merged = new Set([...keywordCache[key], ...words]);
+            keywordCache[key] = [...merged];
+        }
+        const n = Object.keys(keywordCache).length;
+        console.log(`[Skadi] Keyword cache ready: ${n} activities indexed`);
+    });
+}
+
+function scheduleKeywordCacheBuild(rows) {
+    if (keywordCacheBuilt) return;
+    keywordCacheBuilt = true;
+    setTimeout(() => buildKeywordCacheInBackground(rows), 0);
+}
+
+const MODE2_KEYWORD_STOP_WORDS = new Set([
+    'je', 'un', 'une', 'des', 'les', 'du', 'de', 'la', 'le', 'avec', 'pour', 'qui', 'sur', 'dans', 'mon', 'ma', 'mes',
+    'veux', 'cherche', 'faire', 'autour', 'environ', 'à', 'et', 'ou', 'a'
+]);
+
+function extractUserKeywordsForMode2(message) {
+    let s = (message || '').toLowerCase();
+    const locationRegex = /(?:près de|côté de|depuis|au-dessus de|à côté de|vers|dans les|dans le|en partant de)\s+(.+?)(?=$|[.,;:!?]|\b(avec|et|pour|de)\b)/i;
+    s = s.replace(locationRegex, ' ');
+    s = s.replace(/\b\d+(?:[.,]\d+)?\s*(?:km|kilom[eè]tre(?:s)?)\b/gi, ' ');
+    s = s.replace(/\b\d+(?:[.,]\d+)?\s*(?:heure(?:s)?|h)\b/gi, ' ');
+    s = s.replace(/\b\d+h\d{1,2}\b/gi, ' ');
+    s = s.replace(/\b\d+(?:[.,]\d+)?\s*(?:jour(?:s)?|j)\b/gi, ' ');
+    s = s.replace(/\b\d+(?:[.,]\d+)?\s*(?:minute(?:s)?)\b/gi, ' ');
+    s = s.replace(/\b\d+(?:[.,]\d+)?\s*m\s*(?:de\s*d[eé]nivel[eé]|d\+)\b/gi, ' ');
+    s = s.replace(/\b\d+(?:[.,]\d+)?\s*m\s*d\+\b/gi, ' ');
+    s = s.replace(/\b\d+(?:[.,]\d+)?\s*m\b/gi, ' ');
+    s = s.replace(/\bt\s*[1-6]\b/gi, ' ');
+    s = s.replace(/\b\d+(?:[.,]\d+)?\b/g, ' ');
+    s = s.replace(/\s+/g, ' ').trim();
+    const tokens = s.split(/[^\p{L}\p{N}_-]+/u).filter(Boolean);
+    const out = [];
+    for (const t of tokens) {
+        const norm = t.toLowerCase();
+        if (MODE2_KEYWORD_STOP_WORDS.has(norm)) continue;
+        if (norm.length <= 3) continue;
+        out.push(norm);
+    }
+    return [...new Set(out)];
+}
+
+function extractResidualKeywordsForMode1(parsedName) {
+    const tokens = (parsedName || '').toLowerCase().split(/\s+/).filter(Boolean);
+    const out = [];
+    for (const t of tokens) {
+        const norm = t.replace(/[^\p{L}\p{N}_-]/gu, '');
+        if (norm.length <= 3) continue;
+        if (MODE2_KEYWORD_STOP_WORDS.has(norm)) continue;
+        if (gpxNames.some((n) => n.toLowerCase().includes(norm))) continue;
+        out.push(norm);
+    }
+    return [...new Set(out)];
+}
+
+function stripKeywordTokensFromName(parsedName, keywordTokens) {
+    if (!keywordTokens || keywordTokens.length === 0) return (parsedName || '').trim();
+    const kt = new Set(keywordTokens);
+    const parts = (parsedName || '').trim().split(/\s+/).filter(Boolean);
+    const kept = [];
+    for (const p of parts) {
+        const norm = p.toLowerCase().replace(/[^\p{L}\p{N}_-]/gu, '');
+        if (kt.has(norm)) continue;
+        kept.push(p);
+    }
+    return kept.join(' ');
+}
+
+function activityMatchesUserKeywords(activity, userKeywords) {
+    if (!userKeywords || userKeywords.length === 0) return true;
+    const ck = (activity.columnDName || activity.name || '').trim();
+    const words = keywordCache[ck] || [];
+    if (!words.length) return false;
+    for (const uk of userKeywords) {
+        for (const w of words) {
+            if (w === uk) return true;
+        }
+    }
+    return false;
+}
+
+function markerHasKeywordMatch(marker, keywordTokens) {
+    if (!keywordTokens || keywordTokens.length === 0) return true;
+    if (!marker.activityKeys || marker.activityKeys.size === 0) return false;
+    for (const key of marker.activityKeys) {
+        const act = activityCatalog.find((a) => a.key === key);
+        if (act && activityMatchesUserKeywords(act, keywordTokens)) return true;
+    }
+    return false;
+}
+
+function trackHasKeywordMatch(track, keywordTokens) {
+    if (!keywordTokens || keywordTokens.length === 0) return true;
+    const act = activityCatalog.find((a) => a.key === track.gpxName);
+    return !!(act && activityMatchesUserKeywords(act, keywordTokens));
+}
+
+function isReservedMode1SingleWord(word) {
+    const w = (word || '').toLowerCase();
+    if (/^(été|ete|hiver|printemps|automne)$/.test(w)) return true;
+    if (/^(randonnée|rando|randon|ski|trail|alpinisme|alpine|vélo|velo|bike)$/.test(w)) return true;
+    if (/^(accompli|àfaire|afaire)$/.test(w)) return true;
+    if (/^(reset|tous|toute|toutes|aide)$/.test(w)) return true;
+    return false;
+}
+
+function activityNameMatchesSingleWordToken(word) {
+    const w = (word || '').toLowerCase();
+    return gpxNames.some((n) => n.toLowerCase().includes(w));
 }
 
 // Returns display text for column P link, or null if URL should be skipped.
@@ -506,7 +780,7 @@ function buildTrackPopupContent(gpxName, season, type, grade, distance, duration
         ? ` <span class="popup-journal-row" data-journal-path="${escapeHtml(journal.value)}" data-journal-title="${escapeHtml(gpxName)}"><button type="button" class="popup-journal-btn" aria-label="Voir le récit">📖</button></span>`
         : '';
     const journalTextBlock = journal.kind === 'text'
-        ? `<p class="popup-journal-text">${escapeHtml(journal.value)}</p>`
+        ? `<p class="popup-journal-text">${formatPlainJournalTextForPopupHtml(journal.value)}</p>`
         : '';
     let html = `<b>${gpxName}</b>${photoBlock}${journalButtonBlock}<br><b>Saison :</b> ${season}`;
     if (dataType !== 'bike') html += `<br><b>Type :</b> ${type}`;
@@ -602,6 +876,23 @@ function setLegendEnabled(enabled) {
     }
 }
 
+// Fetch GeoJSON with retries on transient CDN errors (common on GitHub Pages for large files).
+function fetchGeoJsonWithRetry(url, maxAttempts) {
+    const attempts = Math.max(1, maxAttempts || 3);
+    const tryOnce = (attemptIndex) => {
+        return fetch(url).then((response) => {
+            const status = response.status;
+            if (status === 502 || status === 503 || status === 504) {
+                if (attemptIndex < attempts) {
+                    return new Promise((resolve) => setTimeout(resolve, 400 * attemptIndex)).then(() => tryOnce(attemptIndex + 1));
+                }
+            }
+            return response;
+        });
+    };
+    return tryOnce(1);
+}
+
 // Function to load GeoJSON files dynamically
 function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, elevationGain, gpxName, dataType, activityUrl, photoUrlsColumnS, journalColumnT) {
     const dataPath = dataType === 'bike' ? 'data/bike/processed/' : 'data/processed/';
@@ -620,7 +911,7 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
         ? { className: 'journal-text-popup', minWidth: 520, maxWidth: 2000 }
         : undefined;
 
-    fetch(`${dataPath}${gpxBaseName}.geojson`)
+    fetchGeoJsonWithRetry(`${dataPath}${gpxBaseName}.geojson`, 3)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`Failed to load GeoJSON: ${response.status} ${response.statusText}`);
@@ -758,6 +1049,7 @@ function loadData() {
             const summitKeys = new Set();
             const summitStateByKey = new Map();
             const activityCatalogByKey = new Map();
+            const keywordCacheRows = [];
             // When multiple summits share one activity, CSV export leaves activity columns empty for merged rows. Carry them over.
             let lastActivity = null;
 
@@ -843,6 +1135,10 @@ function loadData() {
 
                 if (!name && !gpxFile && !gpxName) return;
 
+                const catalogStatus = hasStatusCol && (statusColLower === 'to do' || statusColLower === 'à faire' || statusColLower === 'a faire')
+                    ? 'to do'
+                    : 'completed';
+
                 const altitude = parseFloat(altitudeRaw) || 0;
                 const summitLatitude = parseFloat(summitLatitudeRaw);
                 const summitLongitude = parseFloat(summitLongitudeRaw);
@@ -907,6 +1203,9 @@ function loadData() {
 
                 // Load GeoJSON for every row that has a GPX file (same summit can have multiple tracks).
                 if (gpxFile && gpxName) {
+                    if (isSummitsTab && catalogStatus === 'completed' && (journalEntry || '').trim()) {
+                        keywordCacheRows.push({ columnDName: name.trim(), journalEntry });
+                    }
                     const distanceKm = parseFloat(normalizeDecimal(distance));
                     const durationHours = parseDurationToHours(duration);
                     const elevationM = parseFloat(normalizeDecimal(elevationGain));
@@ -915,6 +1214,7 @@ function loadData() {
                         activityCatalogByKey.set(gpxName, {
                             key: gpxName,
                             name: gpxName,
+                            columnDName: name.trim(),
                             distanceKm: Number.isFinite(distanceKm) ? distanceKm : null,
                             durationHours: Number.isFinite(durationHours) ? durationHours : null,
                             // Keep a human-readable duration label for popups/chat.
@@ -927,7 +1227,7 @@ function loadData() {
                 // Summit coordinates used for location-based recommendations.
                 summitLat: Number.isFinite(summitLatitude) ? summitLatitude : null,
                 summitLon: Number.isFinite(summitLongitude) ? summitLongitude : null,
-                            status: hasStatusCol && (statusColLower === 'to do' || statusColLower === 'à faire' || statusColLower === 'a faire') ? 'to do' : 'completed',
+                            status: catalogStatus,
                             dataType: currentTab
                         });
                     }
@@ -960,6 +1260,9 @@ function loadData() {
             });
 
             activityCatalog = Array.from(activityCatalogByKey.values());
+            if (currentTab === 'summits') {
+                scheduleKeywordCacheBuild(keywordCacheRows);
+            }
             // Re-apply current map state after data reload (tab switch, etc.).
             if (activeRecommendationKeys && activeRecommendationKeys.size > 0) {
                 applyRecommendationVisibility(activeRecommendationKeys);
@@ -1101,7 +1404,7 @@ if (searchInputEl) {
 }
 
 // Function to apply filters
-function applyFilters(filters = null) {
+function applyFilters(filters = null, keywordTokens = null) {
     const fallbackActivityType = document.getElementById('activity-type') ? document.getElementById('activity-type').value : 'all';
     const fallbackStatus = document.getElementById('status') ? document.getElementById('status').value : 'all';
     const fallbackSeason = document.getElementById('season') ? document.getElementById('season').value : 'all';
@@ -1112,6 +1415,7 @@ function applyFilters(filters = null) {
     const season = filters && typeof filters.season === 'string' ? filters.season : fallbackSeason;
     const nameFilter = filters && typeof filters.name === 'string' ? filters.name : fallbackName;
     const nameFilterLower = (nameFilter || '').trim().toLowerCase();
+    const kwTokens = keywordTokens && keywordTokens.length > 0 ? keywordTokens : null;
     latestFilterState = { activityType, status, season, name: nameFilter || '' };
     activeRecommendationKeys = null;
 
@@ -1122,8 +1426,9 @@ function applyFilters(filters = null) {
         const statusMatch = status === 'all' || marker.status === status;
         const seasonMatch = season === 'all' || normalizeSeasonValue(marker.season) === normalizeSeasonValue(season);
         const nameMatch = markerHasActivityNameMatch(marker, nameFilterLower);
+        const keywordMatch = markerHasKeywordMatch(marker, kwTokens);
 
-        if (typeMatch && statusMatch && seasonMatch && nameMatch) {
+        if (typeMatch && statusMatch && seasonMatch && nameMatch && keywordMatch) {
             map.addLayer(marker.layer);
         } else {
             map.removeLayer(marker.layer);
@@ -1137,8 +1442,9 @@ function applyFilters(filters = null) {
         const statusMatch = status === 'all' || track.status === status;
         const seasonMatch = season === 'all' || normalizeSeasonValue(track.season) === normalizeSeasonValue(season);
         const nameMatch = !nameFilterLower || (track.gpxName || '').toLowerCase().includes(nameFilterLower);
+        const keywordMatch = trackHasKeywordMatch(track, kwTokens);
 
-        if (typeMatch && statusMatch && seasonMatch && nameMatch) {
+        if (typeMatch && statusMatch && seasonMatch && nameMatch && keywordMatch) {
             map.addLayer(track.layer);
             map.addLayer(track.invisibleLayer);
         } else {
@@ -1467,6 +1773,7 @@ function getRecommendationMatches(intent) {
     const elevationTarget = targets.elevation_m;
     const cotationIndexTarget = targets.cotation_index;
     const location = intent && intent.location ? intent.location : null;
+    const userKeywords = intent && intent.userKeywords ? intent.userKeywords : [];
 
     const hasDistance = distanceTarget !== null && distanceTarget !== undefined && Number.isFinite(Number(distanceTarget));
     const hasDurationMinutes = durationMinTarget !== null && durationMinTarget !== undefined && Number.isFinite(Number(durationMinTarget));
@@ -1496,18 +1803,41 @@ function getRecommendationMatches(intent) {
         return true;
     });
 
-    // Compute reference_distance for location normalization (max distance among candidates).
+    let replyPrefix = null;
+    let poolForScoring = candidates;
+    let poolForRef = candidates;
+    let kwFilteredSmall = null;
+
+    if (userKeywords.length > 0) {
+        const kwFiltered = candidates.filter((a) => activityMatchesUserKeywords(a, userKeywords));
+        const kwCount = kwFiltered.length;
+        if (kwCount === 0) {
+            replyPrefix = "Je n'ai pas trouvé d'activité avec ce mot-clé, voici les meilleures correspondances globales :";
+            poolForScoring = candidates;
+            poolForRef = candidates;
+        } else if (kwCount <= 2) {
+            replyPrefix = "J'ai trouvé peu d'activités avec ce mot-clé, voici mes meilleures suggestions :";
+            poolForScoring = candidates;
+            poolForRef = candidates;
+            kwFilteredSmall = kwFiltered;
+        } else {
+            poolForScoring = kwFiltered;
+            poolForRef = kwFiltered;
+        }
+    }
+
+    // reference_distance: max distance among the pool used for scoring (keyword step affects poolForRef when 3+ keyword matches).
     let referenceDistanceKm = null;
     if (hasLocation) {
         let max = 0;
-        for (const activity of candidates) {
+        for (const activity of poolForRef) {
             const distKm = haversineDistanceKm(location.lat, location.lon, activity.summitLat, activity.summitLon);
             if (Number.isFinite(distKm)) max = Math.max(max, distKm);
         }
         referenceDistanceKm = max > 0 ? max : 0.0001; // avoid division by zero
     }
 
-    const scored = candidates.map((activity) => {
+    function scoreActivityEntry(activity) {
         let score = 0;
         let distanceToLocationKm = null;
         if (hasLocation) {
@@ -1539,25 +1869,45 @@ function getRecommendationMatches(intent) {
             score += 3 * (distanceToLocationKm / referenceDistanceKm);
         }
         return { activity, score, distanceToLocationKm };
-    });
+    }
 
-    return scored
-        .filter((entry) => Number.isFinite(entry.score))
-        .sort((a, b) => a.score - b.score)
-        .slice(0, 3)
-        .map((entry) => {
-            if (!hasLocation) return entry.activity;
-            return {
-                ...entry.activity,
-                distanceToLocationKm: entry.distanceToLocationKm
-            };
-        });
+    function toActivityOutput(entry) {
+        if (!hasLocation) return entry.activity;
+        return {
+            ...entry.activity,
+            distanceToLocationKm: entry.distanceToLocationKm
+        };
+    }
+
+    function sortAndLimit(entries, limit) {
+        return entries
+            .filter((entry) => Number.isFinite(entry.score))
+            .sort((a, b) => a.score - b.score)
+            .slice(0, limit);
+    }
+
+    if (kwFilteredSmall) {
+        const kwFiltered = kwFilteredSmall;
+        const scoredKw = sortAndLimit(kwFiltered.map(scoreActivityEntry), kwFiltered.length);
+        const selectedFromKw = scoredKw.map(toActivityOutput);
+        const pickedKeys = new Set(selectedFromKw.map((a) => a.key));
+        const restPool = candidates.filter((a) => !pickedKeys.has(a.key));
+        const need = Math.max(0, 3 - selectedFromKw.length);
+        const scoredRest = sortAndLimit(restPool.map(scoreActivityEntry), need);
+        const fromRest = scoredRest.map(toActivityOutput);
+        return { matches: [...selectedFromKw, ...fromRest].slice(0, 3), replyPrefix };
+    }
+
+    const scored = sortAndLimit(poolForScoring.map(scoreActivityEntry), 3);
+    const matches = scored.map(toActivityOutput);
+    return { matches, replyPrefix };
 }
 
-function buildRecommendationReply(matches, locationName = null) {
+function buildRecommendationReply(matches, locationName = null, replyPrefix = null) {
     const count = matches.length;
     if (count === 0) {
-        return "Je n'ai pas trouvé d'aventure accomplie qui corresponde à ta demande.";
+        const emptyMsg = "Je n'ai pas trouvé d'aventure accomplie qui corresponde à ta demande.";
+        return replyPrefix ? `${replyPrefix}\n\n${emptyMsg}` : emptyMsg;
     }
     let intro = '';
     if (locationName) {
@@ -1576,7 +1926,8 @@ function buildRecommendationReply(matches, locationName = null) {
         if (!Number.isFinite(activity.distanceToLocationKm)) return base;
         return `${base}, à ${formatDistanceForChat(activity.distanceToLocationKm)}km de ${locationName}`;
     });
-    return `${intro}\n\n${lines.join('\n')}`;
+    const body = `${intro}\n\n${lines.join('\n')}`;
+    return replyPrefix ? `${replyPrefix}\n\n${body}` : body;
 }
 
 function addChatMessage(messagesEl, text, role) {
@@ -1727,7 +2078,8 @@ function initSkadiChatbot() {
                     return;
                 }
                 const parsed = parseFilterIntent(userText);
-                const matches = getRecommendationMatches({
+                const userKeywords = extractUserKeywordsForMode2(userText);
+                const { matches, replyPrefix } = getRecommendationMatches({
                     filters: {
                         season: parsed.season !== 'all' ? parsed.season : null,
                         type: parsed.activityType !== 'all' ? parsed.activityType : null,
@@ -1739,12 +2091,13 @@ function initSkadiChatbot() {
                         elevation_m: targets.elevationM,
                         cotation_index: targets.cotationIndex
                     },
-                    location
+                    location,
+                    userKeywords
                 });
                 const selection = new Set(matches.map((item) => item.key));
                 applyRecommendationVisibility(selection);
                 // Store for the "contact Charles" flow.
-                const recommendationReplyText = buildRecommendationReply(matches, location ? location.name : null);
+                const recommendationReplyText = buildRecommendationReply(matches, location ? location.name : null, replyPrefix);
                 skadiLastMode2Request = userText;
                 skadiLastMode2Reply = recommendationReplyText;
                 skadiLastMode2LocationName = location ? location.name : null;
@@ -1752,15 +2105,42 @@ function initSkadiChatbot() {
 
                 addChatMessage(messagesEl, recommendationReplyText, 'bot');
             } else {
+                const trimmed = userText.trim();
+                const wordsSplit = trimmed.split(/\s+/);
+                if (currentTab === 'summits' && wordsSplit.length === 1) {
+                    const wordRaw = wordsSplit[0];
+                    const wordLower = wordRaw.toLowerCase();
+                    if (!isReservedMode1SingleWord(wordLower) && !activityNameMatchesSingleWordToken(wordLower)) {
+                        const matchesKeys = [];
+                        for (const act of activityCatalog) {
+                            if (act.dataType !== 'summits' || act.status !== 'completed') continue;
+                            if (activityMatchesUserKeywords(act, [wordLower])) matchesKeys.push(act.key);
+                        }
+                        if (matchesKeys.length === 0) {
+                            addChatMessage(messagesEl, "Je n'ai trouvé aucune activité avec ce mot-clé. Tu peux reformuler ou consulter le message d'aide en tapant 'aide'.", 'bot');
+                            return;
+                        }
+                        applyRecommendationVisibility(new Set(matchesKeys));
+                        const plural = matchesKeys.length > 1 ? 's' : '';
+                        addChatMessage(messagesEl, `J'ai trouvé ${matchesKeys.length} activité${plural} avec le mot-clé '${wordRaw}' !`, 'bot');
+                        return;
+                    }
+                }
                 const parsed = parseFilterIntent(userText);
-                applyFilters({
-                    status: parsed.status,
-                    season: parsed.season,
-                    activityType: parsed.activityType,
-                    name: parsed.name
-                });
+                const keywordTokens = extractResidualKeywordsForMode1(parsed.name);
+                const nameForFilter = stripKeywordTokensFromName(parsed.name, keywordTokens);
+                applyFilters(
+                    {
+                        status: parsed.status,
+                        season: parsed.season,
+                        activityType: parsed.activityType,
+                        name: nameForFilter
+                    },
+                    keywordTokens.length ? keywordTokens : null
+                );
                 const count = getVisibleActivityCount();
-                addChatMessage(messagesEl, buildFilterConfirmation(parsed, count), 'bot');
+                const intentForConfirm = { ...parsed, name: nameForFilter };
+                addChatMessage(messagesEl, buildFilterConfirmation(intentForConfirm, count), 'bot');
             }
         } catch (error) {
             console.error('Skadi chatbot error:', error);
