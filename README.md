@@ -39,7 +39,7 @@ A static web app for visualizing mountain activities (hikes, ski, trail running,
 | N | GPX File | Derived from activity name (auto) |
 | P | Strava / Komoot URL | Strava (auto) or manual |
 | S | Photo URLs (pipe-separated) | Strava photos API (auto) |
-| T | Google Doc URL (journal) | Manual |
+| T | Journal | Manual — inline text (shown in popup; `**bold**` renders as bold) or `journal/path.md` for a Markdown récit in the repo |
 
 ## Activity Types
 
@@ -50,11 +50,18 @@ A static web app for visualizing mountain activities (hikes, ski, trail running,
 | TrailRun / Trail Run | Trail Running | #ffc99e |
 | Other | blank | default |
 
+## Skadi (chatbot)
+
+- **Mode 1:** Filters by season, type, status, or activity name; single-word **keyword** search uses bold-derived keywords from column T (and `journal/` Markdown); multi-word queries can combine filters with keyword tokens.
+- **Mode 2:** Recommends top 3 completed activities using distance, duration, elevation, cotation (T1–T6), and/or location; optional **keyword pre-filter** from the same journal keyword cache (built once per session in the background).
+- See `VISION.md` for behavior details and roadmap.
+
 ## Key Files
 
-- `index.html` – Map container, tabs (Sommets / Vélo), Skadi chatbot, legend, photo lightbox
-- `script.js` – Map init, CSV parsing, markers (with snow cap for completed summits), track layers, Skadi chatbot logic, photo lightbox, legend
+- `index.html` – Map container, tabs (Sommets / Vélo), Skadi chatbot, legend, photo lightbox, journal panel shell
+- `script.js` – Map init, CSV parsing, markers (with snow cap for completed summits), track layers, Skadi chatbot logic, photo lightbox, journal panel + Markdown, keyword cache
 - `style.css` – All styles including chatbot panel, legend, popups
+- `journal/` – Markdown récits referenced from column T (`journal/…`)
 - `scripts/strava_sync.py` – Fetches a named Strava activity, updates Google Sheet (name, season, type, stats, coordinates, photos), pushes GPX to repo
 - `scripts/strava_backfill_photos.py` – One-time backfill of photo URLs into column S for existing activities
 - `scripts/convert_gpx.py` – Converts GPX files to GeoJSON (run automatically via GitHub Actions)
@@ -89,9 +96,15 @@ A static web app for visualizing mountain activities (hikes, ski, trail running,
 | ✅ | Completed summit markers with snow cap |
 | ✅ | Trail Running activity type added |
 | ✅ | Full UI translated to French |
-| ✅ | Skadi chatbot: Mode 1 (filter) + Mode 2 (recommendation + location) |
+| ✅ | Skadi chatbot: Mode 1 (filter) + Mode 2 (recommendation + location + cotation) |
 | ✅ | Contact Charles flow via Google Form |
-| ⏳ | Google Doc journal linked to each activity |
-| ⏳ | Keyword extraction from Google Docs bold text |
+| ✅ | Journal column T: inline popup text + `journal/` Markdown récit |
+| ✅ | **Journal keywords** (bold in T / Markdown) + Skadi Mode 1 & 2 |
 | ⏳ | French/English language switcher (flag toggle) |
 | ⏳ | Immersive journal page with scrolling map (bike tab) |
+
+## Next steps
+
+- **Content:** Add or migrate Markdown under `journal/` and wire column T for activities you want full récits for—Markdown is the rich layer for narratives (no external doc API).
+- **Skadi:** Refine keyword lists and copy when real usage surfaces edge cases.
+- **Product:** UI language toggle; long-term immersive bike journal page (see `VISION.md`).

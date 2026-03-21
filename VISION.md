@@ -36,7 +36,7 @@ The bike tab is the soul of the site: full narrative travel writing meant to ins
 | N | GPX File | Derived from activity name (auto) |
 | P | Strava / Komoot URL | Strava (auto) or manual |
 | S | Photo URLs (pipe-separated) | Strava photos API (auto) |
-| T | Google Doc URL (journal) | Manual |
+| T | Journal (inline text or `journal/…` path) | Manual — plain text in the popup, or Markdown file under `journal/` fetched when the user opens the récit |
 
 ### Activity Types
 
@@ -57,30 +57,34 @@ Skadi is the in-site activity advisor, accessible via a "?" floating button in t
 ### Two modes
 
 **Mode 1 — Filter:**
-The user types keywords (season, activity type, status, activity name). Skadi silently updates the map to show all matching activities. No ranking, no reply beyond a short confirmation.
+The user types keywords (season, activity type, status, activity name). Skadi updates the map to show all matching activities and replies with a short confirmation.
 
 Detected keywords:
 - Season: été, hiver, printemps, automne
-- Type: randonnée, ski, trail, alpinisme
+- Type: randonnée, ski, trail, alpinisme, vélo
 - Status: accompli, à faire
 - Anything else: treated as a name search
 
-**Mode 2 — Recommendation:**
-Triggered when the user mentions at least one of: distance (km), duration (heure/h), elevation (dénivelé/D+), or a location (près de, côté de, depuis, au-dessus de, vers, dans les, dans le, en partant de).
+**Journal keywords (Mode 1):** Words in **bold** in column T (or in linked Markdown under `journal/`) are indexed in a background keyword cache at page load. A single word that is not a season/type/status/name match is treated as a keyword search: all completed activities whose journal keywords match (whole word) are shown. Multi-word phrases can combine filters with keyword tokens (e.g. type + “glacier”) by intersecting the usual filters with keyword matches.
 
-Skadi scores all completed activities and returns the 3 best matches. Scoring uses relative difference for numeric fields, and Haversine distance with a 3x coefficient for location (normalized across candidates). Only completed activities (column C empty) are considered.
+**Mode 2 — Recommendation:**
+Triggered when the user mentions at least one of: distance (km), duration (heure/h/jours), elevation (dénivelé/D+), cotation (T1–T6), or a location (près de, côté de, depuis, au-dessus de, vers, dans les, dans le, en partant de).
+
+Skadi scores completed activities and returns the 3 best matches. Scoring uses relative difference for numeric fields, and Haversine distance with a 3x coefficient for location (normalized across the pool used for scoring). Only completed activities are considered.
+
+**Keyword pre-filter (Mode 2):** Additional words in the message (after stripping numbers, units, location, and stop words) are matched against the same journal keyword cache. Depending on how many activities match, Skadi may narrow the pool before scoring or blend keyword matches with global top scores, with short prefixes in chat when the keyword match is sparse or empty.
 
 The 3 matching activities are displayed on the map, all others are hidden. Skadi presents them in chat with key stats and approximate distance from location if applicable.
 
 ### Contact Charles flow
 After a Mode 2 recommendation, if the user mentions "charles" (case-insensitive) in any message, Skadi asks for their name and silently submits a Google Form with: user name, original request, Skadi's suggestions, and date. Skadi confirms: "Parfait ! Charles reviendra vers toi dès que possible."
 
-### Keyword extraction (planned)
-Keywords will be bolded words in Google Doc journal entries, parsed via the Google Docs API and stored in a dedicated Sheet column. They will feed into Mode 2 scoring and appear as visual tags on the journal page.
+### Journal keywords (implemented)
+Bold phrases in column T (`**like this**` or `__like this__`) or in Markdown files referenced by `journal/…` are parsed in the browser and cached once per session (no blocking of map load). They power Skadi Mode 1 keyword search and Mode 2 pre-filtering.
 
 ### Evolution
 - **Phase 1 (current):** Floating "?" button, filter bar hidden but preserved in code
-- **Phase 2:** Keywords from journal integrated into scoring, filter bar simplified to name search + one quick toggle
+- **Phase 2 (in progress):** Keywords from journal + Skadi integration; optional future: extra Sheet column if needed
 - **Phase 3:** Skadi fully replaces filters, search bar remains for direct lookup
 
 ---
@@ -88,13 +92,13 @@ Keywords will be bolded words in Google Doc journal entries, parsed via the Goog
 ## The Journal
 
 ### Bike Tab
-Full narrative travel writing, the story of the adventure, not a technical route sheet. Structured like a travel book with occasional technical details woven in naturally. Each portion of a bike track (one day of a multi-day trip) links to its own Google Doc journal entry. A trip is defined as a consecutive adventure (days may include rest days but belong to a single journey).
+Full narrative travel writing, the story of the adventure, not a technical route sheet. Structured like a travel book with occasional technical details woven in naturally. Each portion of a bike track (one day of a multi-day trip) can link to its own Markdown file under `journal/` (rich formatting, photos in narrative, etc.). A trip is defined as a consecutive adventure (days may include rest days but belong to a single journey).
 
 ### Summits Tab
 Shorter, more casual entries. A paragraph, a memorable detail, a funny remark. The ambition is to cover all future activities.
 
 ### Source
-Written in Google Docs, one Doc per activity. The Doc URL is stored in column T of the Google Sheet. The website fetches and displays content via the Google Docs API.
+Journal content can be **inline plain text** in column T (shown in the activity popup, with `**bold**` rendered as real bold) or a **Markdown path** such as `journal/MyActivity.md` served from the repo; the full récit opens in a slide-in panel with Markdown rendered. **Rich narrative lives in Markdown**—formatting, structure, and embedded media are authored in `.md` files in the repo, not via an external doc API.
 
 ---
 
@@ -113,7 +117,17 @@ When a track portion is clicked on the map, the user is taken to a dedicated jou
 A flag icon in the top right corner toggles between French (default) and English. All UI elements switch: tab names, filter labels, button text, popup content, Skadi responses. Journal entries stay in French for now. Code, documentation and variable names always remain in English.
 
 ### Tags / keywords
-Keywords extracted from journal bold text appear as visual tags on the journal page. They serve double duty: emphasis in the narrative and scoring input for Skadi's recommendation engine.
+Bold text in journals is already used for Skadi keyword extraction and can later appear as visual tags on dedicated journal pages.
+
+---
+
+## Next steps (near term)
+
+- **Journal polish:** More `journal/*.md` content, richer Markdown for bike and summit récits
+- **Skadi UX:** Tune stop-word lists, keyword messages, and edge cases (homonyms, multi-summit rows)
+- **Data:** Keep column T aligned with bold conventions for reliable keyword matching
+- **i18n:** French/English flag toggle for UI (journal text can stay French initially)
+- **Immersive bike journal:** Full-page “chapter” experience with scrolling map (bike tab) as in the long-term UI vision
 
 ---
 
@@ -134,9 +148,9 @@ Keywords extracted from journal bold text appear as visual tags on the journal p
 | ✅ | Completed summit markers with snow cap |
 | ✅ | Trail Running activity type added |
 | ✅ | Full UI translated to French |
-| ✅ | Skadi chatbot: Mode 1 (filter) + Mode 2 (recommendation + location) |
+| ✅ | Skadi chatbot: Mode 1 (filter) + Mode 2 (recommendation + location + cotation) |
 | ✅ | Contact Charles flow via Google Form |
-| ⏳ | Google Doc journal linked to each activity |
-| ⏳ | Keyword extraction from Google Docs bold text |
+| ✅ | Column T journal: inline text + `journal/` Markdown, popup bold rendering, slide-in récit |
+| ✅ | **Journal keywords:** bold extraction, session cache, Mode 1 + Mode 2 Skadi integration |
 | ⏳ | French/English language switcher (flag toggle) |
 | ⏳ | Immersive journal page with scrolling map (bike tab) |
