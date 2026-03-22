@@ -438,41 +438,97 @@ body.bike-journal-open #bike-journal-immersive:not(.hidden) {
 }
 
 .bike-journal-nav-btn {
+  box-sizing: border-box;
   flex-shrink: 0;
+  /* Grid + zero line-height: centers the glyph box; avoids flex baseline quirks on <button> */
+  display: grid;
+  place-items: center;
   width: 40px;
+  min-width: 40px;
   height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  margin: 0;
+  padding: 0;
+  padding-top: 0;
+  padding-bottom: 0;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
-  font-size: 20px;
-  line-height: 1;
+  font-size: 30px;
+  line-height: 0;
+  font-family: inherit;
   cursor: pointer;
   transition: background 0.15s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/*
+ * ‹ › (U+2039/U+203A): small upward nudge so optical center matches ×; × stays unadjusted.
+ */
+.bike-journal-nav-glyph {
+  display: block;
+  line-height: 0;
+  transform: translateY(-0.08em);
+}
+
+.bike-journal-nav-btn::-moz-focus-inner {
+  padding: 0;
+  border: 0;
 }
 
 .bike-journal-nav-btn:hover:not(.is-disabled) {
   background: rgba(255, 255, 255, 0.16);
+  padding: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 0;
 }
 
 .bike-journal-nav-btn.is-disabled {
   opacity: 0.35;
   cursor: not-allowed;
   pointer-events: none;
+  padding: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 0;
 }
 
 .bike-journal-close-btn {
+  box-sizing: border-box;
   flex-shrink: 0;
+  display: grid;
+  place-items: center;
   width: 40px;
+  min-width: 40px;
   height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  margin: 0 0 0 4px;
+  padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
   font-size: 24px;
-  line-height: 1;
+  line-height: 0;
+  font-family: inherit;
   cursor: pointer;
-  margin-left: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.bike-journal-close-glyph {
+  display: block;
+  line-height: 0;
+}
+
+.bike-journal-close-btn::-moz-focus-inner {
+  padding: 0;
+  border: 0;
 }
 
 .bike-journal-close-btn:hover {
