@@ -744,8 +744,8 @@ def write_bikepacking_autofilled_ranges(
     photo_urls_value: str,
 ) -> None:
     """
-    Writes only B–F and H–I (sync-owned fields). Does not write A, G, J so that
-    manually protected columns for Name / Project / Journal are not touched.
+    In-place update of B–F and H–I only (existing row). Avoids overwriting A / G / J
+    so pre-filled name, project, and journal paths stay intact.
     """
     data = [
         {
@@ -770,6 +770,7 @@ def upsert_bikepacking_activity_to_sheet(
     sheets_service,
     spreadsheet_id: str,
     sheet_name: str,
+    sheet_id: int,
     activity_name: str,
     season: str,
     distance_km: str,
@@ -784,7 +785,9 @@ def upsert_bikepacking_activity_to_sheet(
     Append or update Bikepacking tab row. No OSM.
 
     Match order: (1) column H == Strava URL, (2) column A == activity name and H empty
-    (pre-planned row), (3) append a new row (B–F, H–I only).
+    (pre-planned row), (3) insert a new row (insertDimension + full A:J).
+
+    Updates (1–2) write B–F and H–I only; new rows use insert_new_row_at with A/G/J blank.
     """
     photo_urls_value: Optional[str] = None
     try:
@@ -848,18 +851,28 @@ def upsert_bikepacking_activity_to_sheet(
         return {"matched": 1, "created": 0}
 
     insert_row_1 = len(values) + 1
-    write_bikepacking_autofilled_ranges(
+    new_row = [
+        "",
+        season,
+        distance_km,
+        duration_h,
+        elevation_gain_m,
+        gpx_file_value,
+        "",
+        activity_url,
+        photo_final,
+        "",
+    ]
+    while len(new_row) < 10:
+        new_row.append("")
+    insert_new_row_at(
         sheets_service=sheets_service,
         spreadsheet_id=spreadsheet_id,
+        sheet_id=sheet_id,
         sheet_name=sheet_name,
-        row_1=insert_row_1,
-        season=season,
-        distance_km=distance_km,
-        duration_h=duration_h,
-        elevation_gain_m=elevation_gain_m,
-        gpx_file_value=gpx_file_value,
-        activity_url=activity_url,
-        photo_urls_value=photo_final,
+        insert_row_1=insert_row_1,
+        row_values=new_row,
+        end_col_letter="J",
     )
     print(f"CREATED bikepacking row {insert_row_1} for GPX {gpx_file_value}")
     return {"matched": 0, "created": 1}
@@ -1220,6 +1233,7 @@ def main() -> None:
                 sheets_service=sheets_service,
                 spreadsheet_id=spreadsheet_id,
                 sheet_name=sheet_name,
+                sheet_id=sheet_id,
                 activity_name=activity.name,
                 season=activity.season,
                 distance_km=activity.distance_km,
