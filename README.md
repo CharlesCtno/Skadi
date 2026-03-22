@@ -2,7 +2,7 @@
 
 A static web app for visualizing mountain activities (hikes, ski, trail running, mountaineering, bikepacking) on an interactive Leaflet map, using GeoJSON tracks and Google Sheet data. The UI and Skadi chatbot are in **French**. The stack is ready for **stories**: publish tracks, add Markdown under `journal/`, and readers get map + récit (summit slide-in panel or **immersive bike journal** with chapter-style navigation).
 
-An **English UI toggle** is not planned as a requirement—only a possible long-term extra if the audience grows.
+An **English UI toggle** is not planned as a requirement, only a possible long-term extra if the audience grows.
 
 ## Live Site
 
@@ -41,7 +41,7 @@ An **English UI toggle** is not planned as a requirement—only a possible long-
 | N | GPX File | Derived from activity name (auto) |
 | P | Strava / Komoot URL | Strava (auto) or manual |
 | S | Photo URLs (pipe-separated) | Strava photos API (auto) |
-| T | Journal | Manual — inline text (shown in popup; `**bold**` renders as bold) or `journal/path.md` for a Markdown récit in the repo |
+| T | Journal | Manual inline text (shown in popup; `**bold**` renders as bold) or `journal/path.md` for a Markdown récit in the repo |
 
 ## Activity Types
 
@@ -103,7 +103,7 @@ An **English UI toggle** is not planned as a requirement—only a possible long-
 | ✅ | Journal column T: inline popup text + `journal/` Markdown récit (summits) |
 | ✅ | **Journal keywords** (bold in T / Markdown) + Skadi Mode 1 & 2 |
 | ✅ | **Immersive bike journal** (map + Markdown, étape nav, track selection) |
-| 🔜 (optional) | English UI toggle — long-term only, not a milestone |
+| 🔜 (optional) | English UI toggle long-term only, not a milestone |
 
 ## Next steps
 
