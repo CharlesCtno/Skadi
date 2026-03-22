@@ -76,7 +76,6 @@ An **English UI toggle** is not planned as a requirement—only a possible long-
 
 - Project colors defined in `projectColors` in `script.js`; markers and bike tracks colored by Project, summit tracks by activity type
 - Completed summits have a snow cap on their triangle marker; "à faire" summits have no snow cap
-- Bike rows may have empty Name/Altitude/Lat/Lon; tracks still load using GPX File field
 - Decimals must use dots in source data; no conversion happens in the frontend
 - GPX filename convention: activity name with spaces replaced by underscores + `.gpx` (e.g. `Mont_Telliers.gpx`)
 - Multi-summit activities use `&` as separator in the activity title (e.g. `Dent d'oche & Cornette de Bise`)
