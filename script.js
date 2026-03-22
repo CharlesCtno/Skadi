@@ -20,6 +20,10 @@ let latestFilterState = {
 };
 let journalPanelOpen = false;
 let journalLayoutResizeBound = false;
+/** Bike rows with journal/ path only, CSV order — used for immersive navigation. */
+let bikeEtapesRegistry = [];
+let bikeJournalOpen = false;
+let bikeJournalCurrentGpxName = null;
 
 /** Position journal panel below the main header; match map height to remaining viewport (header + tabs). */
 function applyJournalPanelLayout() {
@@ -176,6 +180,167 @@ function closeJournalPanel() {
     }, 320);
 }
 
+function getCurrentBikeJournalChain() {
+    const entry = bikeEtapesRegistry.find((e) => e.gpxName === bikeJournalCurrentGpxName);
+    if (!entry) return [];
+    return bikeEtapesRegistry.filter((e) => e.project === entry.project);
+}
+
+function buildBikeJournalStatsHtml(entry) {
+    const bits = [];
+    if ((entry.distance || '').trim()) {
+        bits.push(`<span class="bike-stat"><span class="bike-stat-label">Distance</span> : ${escapeHtml(String(entry.distance).trim())} km</span>`);
+    }
+    if ((entry.duration || '').trim()) {
+        bits.push(`<span class="bike-stat"><span class="bike-stat-label">Durée</span> : ${escapeHtml(formatDuration(entry.duration))}</span>`);
+    }
+    if ((entry.elevationGain || '').trim()) {
+        bits.push(`<span class="bike-stat"><span class="bike-stat-label">Dénivelé</span> : ${escapeHtml(String(entry.elevationGain).trim())} m</span>`);
+    }
+    const url = (entry.activityUrl || '').trim();
+    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+        const linkText = getActivityLinkText(url) || 'Lien activité';
+        bits.push(`<a class="bike-stat-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(linkText)}</a>`);
+    }
+    if (bits.length === 0) return '';
+    return `<div class="bike-journal-stats-inner">${bits.join('')}</div>`;
+}
+
+function loadBikeJournalMarkdownInto(journalPath, contentEl) {
+    const safePath = String(journalPath || '').trim();
+    if (!safePath || !/^journal\//i.test(safePath)) {
+        contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
+        return;
+    }
+    const fetchUrl = resolveJournalFetchUrl(safePath);
+    contentEl.innerHTML = '<p>Chargement du récit...</p>';
+
+    fetch(fetchUrl)
+        .then((res) => {
+            if (!res.ok) throw new Error(`journal fetch failed: ${res.status}`);
+            return res.text();
+        })
+        .then((md) => {
+            const htmlOrPromise = renderMarkdownToHtml(md);
+            contentEl.innerHTML = '';
+            if (htmlOrPromise == null) {
+                contentEl.textContent = md;
+                return;
+            }
+            if (typeof htmlOrPromise.then === 'function') {
+                htmlOrPromise
+                    .then((html) => {
+                        contentEl.innerHTML = typeof html === 'string' ? html : String(html);
+                    })
+                    .catch(() => {
+                        contentEl.textContent = md;
+                    });
+                return;
+            }
+            contentEl.innerHTML = htmlOrPromise;
+        })
+        .catch(() => {
+            contentEl.innerHTML = '';
+            contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
+        });
+}
+
+function updateBikeJournalNavButtons(chain, idx) {
+    const prevBtn = document.getElementById('bike-journal-nav-prev');
+    const nextBtn = document.getElementById('bike-journal-nav-next');
+    if (!prevBtn || !nextBtn) return;
+    prevBtn.classList.toggle('is-disabled', idx <= 0);
+    const isLast = idx >= 0 && idx === chain.length - 1;
+    nextBtn.classList.toggle('bike-journal-nav-last', isLast);
+    nextBtn.setAttribute('aria-label', isLast ? 'Fermer le récit' : 'Étape suivante');
+}
+
+function openBikeImmersiveJournal(entry) {
+    const panel = document.getElementById('bike-journal-immersive');
+    const titleEl = document.getElementById('bike-journal-title');
+    const bodyEl = document.getElementById('bike-journal-body');
+    const statsEl = document.getElementById('bike-journal-stats');
+    if (!panel || !titleEl || !bodyEl || !statsEl || !entry) return;
+
+    bikeJournalCurrentGpxName = entry.gpxName;
+    bikeJournalOpen = true;
+    document.body.classList.add('bike-journal-open');
+
+    titleEl.textContent = (entry.etapeName || entry.gpxName || '').trim() || 'Étape';
+    statsEl.innerHTML = buildBikeJournalStatsHtml(entry);
+
+    const chain = bikeEtapesRegistry.filter((e) => e.project === entry.project);
+    const idx = chain.findIndex((e) => e.gpxName === entry.gpxName);
+    updateBikeJournalNavButtons(chain, idx);
+
+    loadBikeJournalMarkdownInto(entry.journalPath, bodyEl);
+
+    panel.classList.remove('hidden');
+    panel.setAttribute('aria-hidden', 'false');
+
+    setTimeout(() => {
+        if (map) map.invalidateSize();
+    }, 320);
+}
+
+function deselectAllBikeTracks() {
+    tracks.forEach((track) => {
+        if (track.dataType !== 'bike') return;
+        track.layer.eachLayer(function(layer) {
+            layer.setStyle({ weight: 3 });
+        });
+        track.invisibleLayer.eachLayer(function(layer) {
+            layer.setStyle({ color: 'transparent', weight: 15, opacity: 0 });
+        });
+    });
+    if (map) map.closePopup();
+}
+
+function closeBikeImmersiveJournal() {
+    const panel = document.getElementById('bike-journal-immersive');
+    if (panel) {
+        panel.classList.add('hidden');
+        panel.setAttribute('aria-hidden', 'true');
+    }
+    document.body.classList.remove('bike-journal-open');
+    bikeJournalOpen = false;
+    bikeJournalCurrentGpxName = null;
+    deselectAllBikeTracks();
+    setTimeout(() => {
+        if (map) map.invalidateSize();
+    }, 320);
+}
+
+function initBikeJournalControls() {
+    const prevBtn = document.getElementById('bike-journal-nav-prev');
+    const nextBtn = document.getElementById('bike-journal-nav-next');
+    const closeBtn = document.getElementById('bike-journal-close');
+    if (!prevBtn || !nextBtn || !closeBtn) return;
+
+    prevBtn.addEventListener('click', function() {
+        if (prevBtn.classList.contains('is-disabled')) return;
+        const chain = getCurrentBikeJournalChain();
+        const idx = chain.findIndex((e) => e.gpxName === bikeJournalCurrentGpxName);
+        if (idx <= 0) return;
+        openBikeImmersiveJournal(chain[idx - 1]);
+    });
+
+    nextBtn.addEventListener('click', function() {
+        const chain = getCurrentBikeJournalChain();
+        const idx = chain.findIndex((e) => e.gpxName === bikeJournalCurrentGpxName);
+        if (idx < 0 || !chain.length) return;
+        if (idx === chain.length - 1) {
+            closeBikeImmersiveJournal();
+            return;
+        }
+        openBikeImmersiveJournal(chain[idx + 1]);
+    });
+
+    closeBtn.addEventListener('click', function() {
+        closeBikeImmersiveJournal();
+    });
+}
+
 // Initialize map
 function initMap() {
   map = L.map('map', {
@@ -318,6 +483,7 @@ function formatDuration(duration) {
 }
 
 // Normalize sheet GPX values ("foo", "foo.gpx", "foo.geojson") to basename "foo".
+// The GPX cell must match the .geojson/.gpx basename on disk (same spelling, accents, spaces vs underscores).
 function normalizeGpxBaseName(value) {
     const raw = (value || '').trim();
     if (!raw) return '';
@@ -390,6 +556,7 @@ function getTrackColorByType(type) {
 // Summits: published sheet (gid=0). Bike: published sheet (gid=2069199560).
 const SUMMITS_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRa2uc5r5sohJICr4Hb4TyQwlJxwtFCVk_NLqu_APJ6yF2FturE2YhbAhuaV_THn6AA0d9U_4BafJ9m/pub?gid=0&single=true&output=csv';
 
+/** Bike sheet CSV (no Type column): A Name, B Season, C Distance [km], D Duration [h], E Elevation Gain [m], F GPX File, G Project, H URL, I photo, J journal path — 10 columns (indices 0–9). */
 function getCsvPath() {
     return currentTab === 'bike'
         ? 'https://docs.google.com/spreadsheets/d/e/2PACX-1vReJHYuqYbldPykQitSbHf--VtP6x1dq18OnmvGmajO6t-NzTtv6-uALyNzcipSZ5uRajKziZcZvS9N/pub?gid=2069199560&single=true&output=csv'
@@ -397,10 +564,11 @@ function getCsvPath() {
 }
 
 // Parse one CSV line (handles quoted fields and "" escape). Returns array of strings.
-function parseCsvLine(line) {
+function parseCsvLineWithDelimiter(line, delimiter) {
     const out = [];
     let field = '';
     let inQuotes = false;
+    const delim = delimiter === ';' ? ';' : ',';
 
     for (let i = 0; i < line.length; i++) {
         const ch = line[i];
@@ -411,16 +579,88 @@ function parseCsvLine(line) {
             } else {
                 inQuotes = !inQuotes;
             }
-        } else if (ch === ',' && !inQuotes) {
+        } else if (ch === delim && !inQuotes) {
             out.push(field);
             field = '';
         } else {
             field += ch;
         }
     }
-    // Keep trailing empty fields (e.g. "...," -> last value is empty string).
     out.push(field);
     return out;
+}
+
+function parseCsvLine(line) {
+    return parseCsvLineWithDelimiter(line, ',');
+}
+
+/** French / EU Sheets often publish CSV with ';' — comma-only parsing shifts columns (GPX can become "Bike", etc.). */
+function detectCsvDelimiter(firstNonEmptyLine) {
+    const line = String(firstNonEmptyLine || '');
+    const semi = (line.match(/;/g) || []).length;
+    const comma = (line.match(/,/g) || []).length;
+    if (semi > 0 && semi >= comma) return ';';
+    return ',';
+}
+
+/** Default bike column indices (A=Name … J=journal) when header detection fails. */
+const DEFAULT_BIKE_COLUMN_INDICES = {
+    name: 0,
+    season: 1,
+    distance: 2,
+    duration: 3,
+    elevation: 4,
+    gpx: 5,
+    project: 6,
+    url: 7,
+    photo: 8,
+    journal: 9
+};
+
+function normalizeBikeHeaderCell(h) {
+    return String(h || '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
+ * Map header labels to column indices so GPX / journal / project stay correct for any column order.
+ */
+function resolveBikeColumnIndicesFromHeaders(headerCells) {
+    const headers = headerCells.map(normalizeBikeHeaderCell);
+    const find = (predicate) => {
+        const i = headers.findIndex(predicate);
+        return i >= 0 ? i : null;
+    };
+    const gpx = find((h) => /\bgpx\b/.test(h) || h.includes('gpx file') || (h.includes('fichier') && h.includes('gpx')));
+    const journal = find((h) => h.includes('journal') || h.includes('recit'));
+    const project = find((h) => h.includes('project') || h.includes('projet'));
+    const name = find((h) => /^name$/.test(h) || h === 'nom');
+    const season = find((h) => h.includes('season') || h.includes('saison'));
+    const distance = find((h) => h.includes('distance'));
+    const duration = find((h) => h.includes('duration') || h.includes('duree'));
+    const elevation = find((h) => h.includes('elevation') || h.includes('denivele') || (h.includes('gain') && h.includes('m')));
+    const url = find((h) => h === 'url' || h.includes('strava') || h.includes('komoot'));
+    const photo = find((h) => h.includes('photo') || h.includes('image'));
+
+    return {
+        name: name ?? DEFAULT_BIKE_COLUMN_INDICES.name,
+        season: season ?? DEFAULT_BIKE_COLUMN_INDICES.season,
+        distance: distance ?? DEFAULT_BIKE_COLUMN_INDICES.distance,
+        duration: duration ?? DEFAULT_BIKE_COLUMN_INDICES.duration,
+        elevation: elevation ?? DEFAULT_BIKE_COLUMN_INDICES.elevation,
+        gpx: gpx ?? DEFAULT_BIKE_COLUMN_INDICES.gpx,
+        project: project ?? DEFAULT_BIKE_COLUMN_INDICES.project,
+        url: url ?? DEFAULT_BIKE_COLUMN_INDICES.url,
+        photo: photo ?? DEFAULT_BIKE_COLUMN_INDICES.photo,
+        journal: journal ?? DEFAULT_BIKE_COLUMN_INDICES.journal
+    };
+}
+
+function maxBikeColumnIndex(B) {
+    return Math.max(...Object.values(B));
 }
 
 function normalizeDecimal(value) {
@@ -894,7 +1134,8 @@ function fetchGeoJsonWithRetry(url, maxAttempts) {
 }
 
 // Function to load GeoJSON files dynamically
-function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, elevationGain, gpxName, dataType, activityUrl, photoUrlsColumnS, journalColumnT) {
+/** @param bikeImmersiveMeta {object|null} When set (bike + journal/ path), track opens immersive view on click instead of popup. */
+function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, elevationGain, gpxName, dataType, activityUrl, photoUrlsColumnS, journalColumnT, bikeImmersiveMeta) {
     const dataPath = dataType === 'bike' ? 'data/bike/processed/' : 'data/processed/';
     const gpxBaseName = normalizeGpxBaseName(gpxFile);
     if (!gpxBaseName) return;
@@ -905,8 +1146,8 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
 
     const popupContent = buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType, activityUrl, photoUrlsColumnS || '', journalColumnT || '');
     const journalMeta = parseJournalEntry(journalColumnT);
-    const opensJournalDirectly = dataType === 'bike' && journalMeta.kind === 'path';
-    // Apply wider minimum popup only when column T is plain text.
+    const opensBikeImmersive = !!(bikeImmersiveMeta && /^journal\//i.test(String(bikeImmersiveMeta.journalPath || '').trim()));
+    // Apply wider minimum popup only when column T is plain text (summits / bike without immersive path).
     const popupOptions = journalMeta.kind === 'text'
         ? { className: 'journal-text-popup', minWidth: 520, maxWidth: 2000 }
         : undefined;
@@ -923,14 +1164,15 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
             const track = L.geoJSON(data, {
                 style: { color: color, weight: 3 },
                 onEachFeature: function(feature, layer) {
-                    if (!opensJournalDirectly) {
+                    if (!opensBikeImmersive) {
                         layer.bindPopup(popupContent, popupOptions);
                     }
                     layer.on('click', function() {
                         track.bringToFront();
                         layer.setStyle({ weight: 6 });
-                        if (opensJournalDirectly) {
-                            openJournalPanel(gpxName, journalMeta.value);
+                        if (opensBikeImmersive) {
+                            const entry = bikeEtapesRegistry.find((e) => e.gpxName === gpxName);
+                            if (entry) openBikeImmersiveJournal(entry);
                         }
                     });
                     layer.on('popupclose', function() {
@@ -944,7 +1186,7 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
                 style: { color: 'transparent', weight: 15, opacity: 0 },
                 interactive: true,
                 onEachFeature: function(feature, layer) {
-                    if (!opensJournalDirectly) {
+                    if (!opensBikeImmersive) {
                         layer.bindPopup(popupContent, popupOptions);
                     }
                     layer.on('click', function() {
@@ -952,8 +1194,9 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
                         track.eachLayer(function(trackLayer) {
                             trackLayer.setStyle({ weight: 6 });
                         });
-                        if (opensJournalDirectly) {
-                            openJournalPanel(gpxName, journalMeta.value);
+                        if (opensBikeImmersive) {
+                            const entry = bikeEtapesRegistry.find((e) => e.gpxName === gpxName);
+                            if (entry) openBikeImmersiveJournal(entry);
                         }
                     });
                     layer.on('popupclose', function() {
@@ -1012,7 +1255,9 @@ function focusOnGPXName(gpxName) {
                     map.fitBounds(track.bounds, { padding: [50, 50] });
                 }
 
-                layer.openPopup();
+                if (layer.getPopup && layer.getPopup()) {
+                    layer.openPopup();
+                }
             });
         } else {
             track.layer.eachLayer(function(layer) {
@@ -1038,6 +1283,7 @@ function loadData() {
     gpxNameSet = new Set();
     gpxNameToMarker = {};
     activityCatalog = [];
+    bikeEtapesRegistry = [];
 
     // Summits: fetch published sheet and apply same processing as export_sheet_to_csv.py in the browser. Bike: published sheet as-is.
     const csvPath = getCsvPath();
@@ -1045,7 +1291,16 @@ function loadData() {
         .then(response => response.text())
         .then(csvText => {
             if (currentTab === 'summits') csvText = processSheetToSummitsRows(csvText);
-            const rows = csvText.split(/\r?\n/).slice(1);
+            const allLines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+            let bikeCsvDelimiter = ',';
+            let bikeColumnIndices = DEFAULT_BIKE_COLUMN_INDICES;
+            if (currentTab === 'bike' && allLines.length > 0) {
+                bikeCsvDelimiter = detectCsvDelimiter(allLines[0]);
+                bikeColumnIndices = resolveBikeColumnIndicesFromHeaders(
+                    parseCsvLineWithDelimiter(allLines[0], bikeCsvDelimiter)
+                );
+            }
+            const rows = allLines.slice(1);
             const summitKeys = new Set();
             const summitStateByKey = new Map();
             const activityCatalogByKey = new Map();
@@ -1056,50 +1311,96 @@ function loadData() {
             rows.forEach(row => {
                 if (!row.trim()) return;
 
-                const columns = parseCsvLine(row);
                 const isBikeTab = currentTab === 'bike';
                 const isSummitsTab = currentTab === 'summits';
+                const columns = isBikeTab
+                    ? parseCsvLineWithDelimiter(row, bikeCsvDelimiter)
+                    : parseCsvLine(row);
                 // Summits: pad to 16 columns (A–P incl. Photo URLs + Journal) so Google CSV
                 // never drops trailing empty fields and we still read column T.
                 if (isSummitsTab) {
                     while (columns.length < 16) columns.push('');
                 }
-                // Summits rows are generated by processSheetToSummitsRows with a fixed schema.
-                const hasStatusCol = isSummitsTab ? true : columns.length >= 13;
-                const minColumns = isSummitsTab ? 16 : 12;
+                if (isBikeTab) {
+                    const need = Math.max(10, maxBikeColumnIndex(bikeColumnIndices) + 1);
+                    while (columns.length < need) columns.push('');
+                }
+                const hasStatusCol = isSummitsTab;
+                const minColumns = isSummitsTab
+                    ? 16
+                    : isBikeTab
+                        ? Math.max(10, maxBikeColumnIndex(bikeColumnIndices) + 1)
+                        : 10;
 
                 if (columns.length < minColumns) {
                     console.warn('Skipping malformed CSV row (not enough columns):', row);
                     return;
                 }
 
-                const statusCol = hasStatusCol ? (columns[0] || '').trim() : '';
-                const statusColLower = statusCol.toLowerCase();
-                const isToDoStatus = hasStatusCol && (statusColLower === 'to do' || statusColLower === 'à faire' || statusColLower === 'a faire');
-                const nameIdx = hasStatusCol ? 1 : 0;
-                let name = (columns[nameIdx] || '').trim();
-                let altitudeRaw = (columns[nameIdx + 1] || '').trim();
-                let summitLatitudeRaw = (columns[nameIdx + 2] || '').trim();
-                let summitLongitudeRaw = (columns[nameIdx + 3] || '').trim();
-                let season = (columns[nameIdx + 4] || '').trim();
-                let type = (columns[nameIdx + 5] || '').trim();
-                let grade = (columns[nameIdx + 6] || '').trim();
-                let distance = (columns[nameIdx + 7] || '').trim();
-                let duration = (columns[nameIdx + 8] || '').trim();
-                let elevationGain = (columns[nameIdx + 9] || '').trim();
-                const gpxFileCell = isSummitsTab
-                    ? (columns[11] || '').trim() // fixed index in processed summits CSV
-                    : (columns[nameIdx + 10] || '').trim();
-                let gpxFileRaw = gpxFileCell;
-                const projectRaw = (columns[nameIdx + 11] || '').trim();
-                let project = normalizeProjectName(projectRaw || 'No Project');
-                let activityUrl = (columns[nameIdx + 12] || '').trim();
-                let photoUrls = (columns.length > nameIdx + 13) ? (columns[nameIdx + 13] || '').trim() : '';
-                let journalEntry = (columns.length > nameIdx + 14) ? (columns[nameIdx + 14] || '').trim() : '';
+                let name;
+                let altitudeRaw = '';
+                let summitLatitudeRaw = '';
+                let summitLongitudeRaw = '';
+                let season;
+                let type;
+                let grade;
+                let distance;
+                let duration;
+                let elevationGain;
+                let gpxFileCell;
+                let gpxFileRaw;
+                let projectRaw;
+                let project;
+                let activityUrl;
+                let photoUrls;
+                let journalEntry;
+                let statusCol = '';
+                let statusColLower = '';
+                let isToDoStatus = false;
+
+                if (isBikeTab) {
+                    const B = bikeColumnIndices;
+                    name = (columns[B.name] || '').trim();
+                    season = (columns[B.season] || '').trim();
+                    type = '';
+                    grade = '';
+                    distance = (columns[B.distance] || '').trim();
+                    duration = (columns[B.duration] || '').trim();
+                    elevationGain = (columns[B.elevation] || '').trim();
+                    gpxFileCell = (columns[B.gpx] || '').trim();
+                    projectRaw = (columns[B.project] || '').trim();
+                    activityUrl = (columns[B.url] || '').trim();
+                    photoUrls = (columns[B.photo] || '').trim();
+                    journalEntry = (columns[B.journal] || '').trim();
+                    gpxFileRaw = gpxFileCell;
+                    project = normalizeProjectName(projectRaw || 'No Project');
+                } else {
+                    statusCol = (columns[0] || '').trim();
+                    statusColLower = statusCol.toLowerCase();
+                    isToDoStatus = hasStatusCol && (statusColLower === 'to do' || statusColLower === 'à faire' || statusColLower === 'a faire');
+                    const nameIdx = 1;
+                    name = (columns[nameIdx] || '').trim();
+                    altitudeRaw = (columns[nameIdx + 1] || '').trim();
+                    summitLatitudeRaw = (columns[nameIdx + 2] || '').trim();
+                    summitLongitudeRaw = (columns[nameIdx + 3] || '').trim();
+                    season = (columns[nameIdx + 4] || '').trim();
+                    type = (columns[nameIdx + 5] || '').trim();
+                    grade = (columns[nameIdx + 6] || '').trim();
+                    distance = (columns[nameIdx + 7] || '').trim();
+                    duration = (columns[nameIdx + 8] || '').trim();
+                    elevationGain = (columns[nameIdx + 9] || '').trim();
+                    gpxFileCell = (columns[11] || '').trim();
+                    gpxFileRaw = gpxFileCell;
+                    projectRaw = (columns[nameIdx + 11] || '').trim();
+                    project = normalizeProjectName(projectRaw || 'No Project');
+                    activityUrl = (columns[nameIdx + 12] || '').trim();
+                    photoUrls = (columns.length > nameIdx + 13) ? (columns[nameIdx + 13] || '').trim() : '';
+                    journalEntry = (columns.length > nameIdx + 14) ? (columns[nameIdx + 14] || '').trim() : '';
+                }
 
                 // Inherit activity data from previous row when this row has summit but empty activity (merged cells in sheet).
                 // Do not inherit into explicit "to do" rows: they often have no activity fields by design.
-                if (lastActivity && !gpxFileRaw && !season && !isToDoStatus) {
+                if (isSummitsTab && lastActivity && !gpxFileRaw && !season && !isToDoStatus) {
                     season = lastActivity.season;
                     type = lastActivity.type;
                     grade = lastActivity.grade;
@@ -1113,7 +1414,7 @@ function loadData() {
                     activityUrl = lastActivity.activityUrl || activityUrl;
                     if (!photoUrls) photoUrls = lastActivity.photoUrls || '';
                     if (!journalEntry) journalEntry = lastActivity.journalEntry || '';
-                } else if (gpxFileRaw || season) {
+                } else if (isSummitsTab && (gpxFileRaw || season)) {
                     lastActivity = {
                         season,
                         type,
@@ -1130,6 +1431,12 @@ function loadData() {
                 }
 
                 const gpxFile = normalizeGpxBaseName(gpxFileRaw) || null;
+                if (isBikeTab && gpxFile && /^(bike|ride|run)$/i.test(gpxFile)) {
+                    console.warn(
+                        '[Skadi bike] GPX cell looks like an activity label, not a filename. Check CSV delimiter (; vs ,) and the GPX File column.',
+                        { gpxFileCell, delimiter: bikeCsvDelimiter }
+                    );
+                }
                 let gpxName = (gpxFile ? gpxFile.replace(/_/g, ' ') : name).trim();
                 if (isBikeTab && !name && gpxName) name = gpxName;
 
@@ -1240,6 +1547,32 @@ function loadData() {
                         : getTrackColorByType(type);
 
                     const formattedDuration = formatDuration(duration);
+                    const bikeImmersiveMeta =
+                        isBikeTab && /^journal\//i.test((journalEntry || '').trim())
+                            ? {
+                                  etapeName: name.trim(),
+                                  journalPath: journalEntry.trim(),
+                                  project,
+                                  distance,
+                                  duration,
+                                  elevationGain,
+                                  activityUrl,
+                                  photoUrls
+                              }
+                            : null;
+                    if (bikeImmersiveMeta) {
+                        bikeEtapesRegistry.push({
+                            etapeName: bikeImmersiveMeta.etapeName,
+                            gpxName,
+                            journalPath: bikeImmersiveMeta.journalPath,
+                            project: bikeImmersiveMeta.project,
+                            distance: bikeImmersiveMeta.distance,
+                            duration: bikeImmersiveMeta.duration,
+                            elevationGain: bikeImmersiveMeta.elevationGain,
+                            activityUrl: bikeImmersiveMeta.activityUrl,
+                            photoUrls: bikeImmersiveMeta.photoUrls
+                        });
+                    }
                     loadGeoJSON(
                         gpxFile,
                         trackColor,
@@ -1253,7 +1586,8 @@ function loadData() {
                         currentTab,
                         activityUrl,
                         photoUrls,
-                        journalEntry
+                        journalEntry,
+                        bikeImmersiveMeta
                     );
                 }
 
@@ -1476,6 +1810,7 @@ document.querySelectorAll('#tabs a').forEach(tab => {
         // Set current tab
         currentTab = this.getAttribute('data-tab');
         closeJournalPanel();
+        closeBikeImmersiveJournal();
 
         // Skadi must not appear nor influence the bike tab.
         // When switching to bikepacking, clear any active recommendation state so it doesn't hide layers.
@@ -2270,6 +2605,7 @@ document.addEventListener('DOMContentLoaded', function() {
             closeJournalPanel();
         });
     }
+    initBikeJournalControls();
 
     // Set the default map view for summits
     map.setView([46.2, 7.5], 8);

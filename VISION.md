@@ -38,6 +38,8 @@ The bike tab is the soul of the site: full narrative travel writing meant to ins
 | S | Photo URLs (pipe-separated) | Strava photos API (auto) |
 | T | Journal (inline text or `journal/…` path) | Manual — plain text in the popup, or Markdown file under `journal/` fetched when the user opens the récit |
 
+**GPX / GeoJSON filenames:** The value in column N must be the **exact basename** of the files in `data/processed/` (same characters as on disk: accents, spaces vs underscores, parentheses). The app does not rename or normalize it. Strava sync writes the same string as the exported `.gpx` name; for manual rows, copy the filename from Finder or match it character-for-character.
+
 ### Activity Types
 
 | Strava type | Sheet value | Track color |

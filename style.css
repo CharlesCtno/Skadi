@@ -271,7 +271,7 @@
 
 /* Journal panel — fixed; top/height set inline in script.js from <header> offsetHeight */
 #map {
-  transition: width 300ms ease, height 300ms ease;
+  transition: width 300ms ease, height 300ms ease, flex-basis 300ms ease;
 }
 
 body.journal-open #map {
@@ -364,5 +364,166 @@ body.journal-open #map {
   #journal-panel {
     width: 100%;
     border-left: none;
+  }
+}
+
+/* --- Bike immersive journal (25vh map / 75vh panel; replaces old bike slide-in) --- */
+#bike-journal-immersive {
+  display: none;
+  flex-direction: column;
+  flex: 0 0 75vh;
+  height: 75vh;
+  min-height: 0;
+  width: 100%;
+  background: #2a2a2a;
+  color: #fff;
+  font-family: Arial, sans-serif;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  box-sizing: border-box;
+}
+
+body.bike-journal-open #tab-content {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 130px);
+  overflow: hidden;
+}
+
+body.bike-journal-open #map {
+  flex: 0 0 25vh;
+  height: 25vh !important;
+  min-height: 0;
+  width: 100% !important;
+}
+
+body.bike-journal-open #bike-journal-immersive:not(.hidden) {
+  display: flex;
+}
+
+.bike-journal-top {
+  flex-shrink: 0;
+  background: #333;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.bike-journal-frozen-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  min-height: 48px;
+}
+
+.bike-journal-title {
+  flex: 1;
+  margin: 0;
+  font-size: clamp(16px, 2.5vw, 22px);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  min-width: 0;
+}
+
+.bike-journal-nav-btn {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.bike-journal-nav-btn:hover:not(.is-disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.bike-journal-nav-btn.is-disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.bike-journal-close-btn {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  margin-left: 4px;
+}
+
+.bike-journal-close-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.bike-journal-stats {
+  padding: 8px 14px 12px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bike-journal-stats-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+}
+
+.bike-journal-stats .bike-stat-label {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.bike-journal-stats a {
+  color: #80c2d1;
+  text-decoration: none;
+}
+
+.bike-journal-stats a:hover {
+  text-decoration: underline;
+}
+
+.bike-journal-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px 28px;
+  line-height: 1.55;
+}
+
+.bike-journal-scroll img {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 12px 0;
+}
+
+.bike-journal-scroll h1,
+.bike-journal-scroll h2,
+.bike-journal-scroll h3 {
+  margin-top: 1.2em;
+  margin-bottom: 0.5em;
+}
+
+@media (max-width: 767px) {
+  body.bike-journal-open #map {
+    flex: 0 0 25vh;
+    height: 25vh !important;
+  }
+
+  body.bike-journal-open #bike-journal-immersive:not(.hidden) {
+    flex: 0 0 75vh;
+    height: 75vh;
   }
 }
