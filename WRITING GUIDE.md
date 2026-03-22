@@ -8,7 +8,7 @@ Skadi has three distinct journal formats, each with its own voice, length and pu
 
 ## 1. Summit inline entries (column T, plain text)
 
-These are short — one paragraph maximum. The constraint is a feature, not a limitation. It forces you to pick the one thing that made that summit memorable.
+These are short one paragraph maximum. The constraint is a feature, not a limitation. It forces you to pick the one thing that made that summit memorable.
 
 ### Structure
 
@@ -46,7 +46,7 @@ Bold naturally as you write. They mark the moments that matter.
 
 ## 3. Bike journal Markdown entries (full travel narrative, journal/*.md)
 
-The most creative format and the soul of the site. The dictaphone workflow is the recommended method — record the day in French, send the audio, get the Markdown back, review and adjust.
+The most creative format. The dictaphone workflow is the recommended method: record the day in French, send the audio, get the Markdown back, review and adjust.
 
 ### Workflow
 
