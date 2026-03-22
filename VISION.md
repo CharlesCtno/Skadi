@@ -6,9 +6,9 @@ Skadi is a personal mountain adventure journal with an interactive map at its he
 
 The site is built for friends and family first, with the ambition to grow into a wider community over time. The tone is personal, warm, and lightly humorous, the writing of someone who takes the mountains seriously but never themselves.
 
-The bike tab is the soul of the site: full narrative travel writing meant to inspire. The summits tab is a living logbook of completed and planned ascents.
+The bike tab works as a travelling journal: full narrative travel writing meant to inspire. The summits tab is a living logbook of completed and planned ascents.
 
-**Today, the product is ready to tell stories:** publish tracks from the sheet, drop Markdown under `journal/`, open the immersive bike récit or summit popups, and let Skadi help readers explore. What remains is mostly content and polish—not blocking features.
+**Today, the product is ready to tell stories:** publish tracks from the sheet, drop Markdown under `journal/`, open the immersive bike récit or summit popups, and let Skadi help readers explore. What remains is mostly content and polish, not blocking features.
 
 ---
 
@@ -38,7 +38,7 @@ The bike tab is the soul of the site: full narrative travel writing meant to ins
 | N | GPX File | Derived from activity name (auto) |
 | P | Strava / Komoot URL | Strava (auto) or manual |
 | S | Photo URLs (pipe-separated) | Strava photos API (auto) |
-| T | Journal (inline text or `journal/…` path) | Manual — plain text in the popup, or Markdown file under `journal/` fetched when the user opens the récit |
+| T | Journal (inline text or `journal/…` path) | Manual plain text in the popup, or Markdown file under `journal/` fetched when the user opens the récit |
 
 **GPX / GeoJSON filenames:** The value in column N must be the **exact basename** of the files in `data/processed/` (same characters as on disk: accents, spaces vs underscores, parentheses). The app does not rename or normalize it. Strava sync writes the same string as the exported `.gpx` name; for manual rows, copy the filename from Finder or match it character-for-character.
 
@@ -60,7 +60,7 @@ Skadi is the in-site activity advisor, accessible via a "?" floating button in t
 
 ### Two modes
 
-**Mode 1 — Filter:**
+**Mode 1 Filter:**
 The user types keywords (season, activity type, status, activity name). Skadi updates the map to show all matching activities and replies with a short confirmation.
 
 Detected keywords:
@@ -71,7 +71,7 @@ Detected keywords:
 
 **Journal keywords (Mode 1):** Words in **bold** in column T (or in linked Markdown under `journal/`) are indexed in a background keyword cache at page load. A single word that is not a season/type/status/name match is treated as a keyword search: all completed activities whose journal keywords match (whole word) are shown. Multi-word phrases can combine filters with keyword tokens (e.g. type + “glacier”) by intersecting the usual filters with keyword matches.
 
-**Mode 2 — Recommendation:**
+**Mode 2 Recommendation:**
 Triggered when the user mentions at least one of: distance (km), duration (heure/h/jours), elevation (dénivelé/D+), cotation (T1–T6), or a location (près de, côté de, depuis, au-dessus de, vers, dans les, dans le, en partant de).
 
 Skadi scores completed activities and returns the 3 best matches. Scoring uses relative difference for numeric fields, and Haversine distance with a 3x coefficient for location (normalized across the pool used for scoring). Only completed activities are considered.
@@ -89,14 +89,14 @@ Bold phrases in column T (`**like this**` or `__like this__`) or in Markdown fil
 ### Evolution
 - **Phase 1 (done):** Floating "?" button, filter bar hidden but preserved in code
 - **Phase 2 (done):** Keywords from journal + Skadi integration (Mode 1 & 2)
-- **Phase 3 (optional):** Skadi could fully replace filters; search bar remains for direct lookup
+- **Phase 3 (done):** Skadi could fully replace filters; search bar remains for direct lookup
 
 ---
 
 ## The Journal
 
 ### Bike Tab
-Full narrative travel writing—the story of the adventure, not a technical route sheet. Structured like a travel book with occasional technical details woven in naturally. Each portion of a bike track (one day of a multi-day trip) links to its own Markdown file under `journal/` (rich formatting, photos, embedded HTML where needed). A trip is a consecutive adventure (rest days included) under one **Project**.
+Full narrative travel writing the story of the adventure, not a technical route sheet. Structured like a travel book with occasional technical details woven in naturally. Each portion of a bike track (one day of a multi-day trip) links to its own Markdown file under `journal/` (rich formatting, photos, embedded HTML where needed). A trip is a consecutive adventure (rest days included) under one **Project**.
 
 **Bike sheet:** Fixed **10 columns A–J** (see `docs/BIKE_SHEET_SCHEMA.md`). Column **J** holds the immersive journal Markdown path (`journal/…`). The summits tab uses a different layout (column T for journal).
 
@@ -110,14 +110,14 @@ Shorter, more casual entries. A paragraph, a memorable detail, a funny remark. T
 
 **Bike:** Markdown paths in column J; content is rendered in the immersive view.
 
-**Rich narrative lives in Markdown** in the repo—not via an external doc API.
+**Rich narrative lives in Markdown** in the repo, not via an external doc API.
 
 ---
 
 ## Long-Term / Optional Ideas
 
 ### English UI (optional)
-A flag or toggle to switch the **interface** to English would help a wider audience; journal copy could stay French. **Not a priority**—only worth it if readership justifies the maintenance.
+A flag or toggle to switch the **interface** to English would help a wider audience; journal copy could stay French. **Not a priority** only worth it if readership justifies the maintenance.
 
 ### Tags / keywords (product)
 Bold text in journals already feeds Skadi; visual tags on story pages could come later.
@@ -127,7 +127,7 @@ Bold text in journals already feeds Skadi; visual tags on story pages could come
 ## Next steps (content & polish)
 
 - **Stories:** Write and link `journal/*.md` files; keep GPX column values aligned with GeoJSON basenames (see `docs/BIKE_SHEET_SCHEMA.md`).
-- **Journal polish:** Richer Markdown, photos, tone—same tooling, more words.
+- **Journal polish:** Richer Markdown, photos, tone same tooling, more words.
 - **Skadi UX:** Tune stop-word lists and edge cases as real usage appears.
 - **Data:** Keep column T (summits) bold conventions for keyword matching.
 
@@ -155,5 +155,5 @@ Bold text in journals already feeds Skadi; visual tags on story pages could come
 | ✅ | Column T journal: inline text + `journal/` Markdown, popup bold rendering, slide-in récit |
 | ✅ | **Journal keywords:** bold extraction, session cache, Mode 1 + Mode 2 Skadi integration |
 | ✅ | **Immersive bike journal:** map band + Markdown chapter, sticky header, étape navigation, track highlight |
-| 🔜 (optional) | English UI toggle—not required; long-term only if needed |
+| 🔜 (optional) | English UI toggle not required; long-term only if needed |
 
