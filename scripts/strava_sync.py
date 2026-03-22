@@ -681,29 +681,6 @@ def insert_new_row_at(
     ).execute()
 
 
-def write_bikepacking_row_values(
-    sheets_service,
-    spreadsheet_id: str,
-    sheet_name: str,
-    row_1: int,
-    row_values: List[str],
-) -> None:
-    """
-    Write A:J for one row without insertDimension.
-
-    The Bikepacking tab may use sheet/range protection that allows editing cells but
-    blocks batchUpdate insertDimension ("protected cell or object"). Appending data
-    via values.update to the next row avoids that.
-    """
-    target_range = f"{sheet_name}!A{row_1}:J{row_1}"
-    sheets_service.spreadsheets().values().update(
-        spreadsheetId=spreadsheet_id,
-        range=target_range,
-        valueInputOption="RAW",
-        body={"values": [row_values]},
-    ).execute()
-
-
 def fail_destination_invalid() -> None:
     print(
         'ERROR: destination must be either "sommets" or "bikepacking"',
@@ -734,10 +711,66 @@ def find_bike_row_by_strava_url(values: List[List[str]], activity_url: str) -> O
     return None
 
 
+def find_bike_row_by_planned_name(
+    values: List[List[str]], activity_name: str
+) -> Optional[int]:
+    """
+    Find a pre-planned row: column A matches the Strava activity title (normalized)
+    and column H (URL) is still empty so the sync can fill stats + Strava link.
+    """
+    target = _normalize(activity_name)
+    if not target:
+        return None
+    for row_1, row in enumerate(values, start=1):
+        if _normalize(_row_cell(row, 0)) != target:
+            continue
+        if _row_cell(row, 7).strip():
+            continue
+        return row_1
+    return None
+
+
+def write_bikepacking_autofilled_ranges(
+    sheets_service,
+    spreadsheet_id: str,
+    sheet_name: str,
+    row_1: int,
+    season: str,
+    distance_km: str,
+    duration_h: str,
+    elevation_gain_m: str,
+    gpx_file_value: str,
+    activity_url: str,
+    photo_urls_value: str,
+) -> None:
+    """
+    Writes only B–F and H–I (sync-owned fields). Does not write A, G, J so that
+    manually protected columns for Name / Project / Journal are not touched.
+    """
+    data = [
+        {
+            "range": f"{sheet_name}!B{row_1}:F{row_1}",
+            "values": [[season, distance_km, duration_h, elevation_gain_m, gpx_file_value]],
+        },
+        {
+            "range": f"{sheet_name}!H{row_1}:I{row_1}",
+            "values": [[activity_url, photo_urls_value or "none"]],
+        },
+    ]
+    for item in data:
+        sheets_service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=item["range"],
+            valueInputOption="RAW",
+            body={"values": item["values"]},
+        ).execute()
+
+
 def upsert_bikepacking_activity_to_sheet(
     sheets_service,
     spreadsheet_id: str,
     sheet_name: str,
+    activity_name: str,
     season: str,
     distance_km: str,
     duration_h: str,
@@ -748,7 +781,10 @@ def upsert_bikepacking_activity_to_sheet(
     activity_id: int,
 ) -> Dict[str, int]:
     """
-    Append or update Bikepacking tab row. No OSM. A (Name), G (Project), J (Journal) left blank.
+    Append or update Bikepacking tab row. No OSM.
+
+    Match order: (1) column H == Strava URL, (2) column A == activity name and H empty
+    (pre-planned row), (3) append a new row (B–F, H–I only).
     """
     photo_urls_value: Optional[str] = None
     try:
@@ -772,48 +808,58 @@ def upsert_bikepacking_activity_to_sheet(
     values = values_resp.get("values", [])
 
     match_row_1 = find_bike_row_by_strava_url(values, activity_url)
+    photo_final = photo_urls_value or "none"
     if match_row_1 is not None:
-        data = [
-            {
-                "range": f"{sheet_name}!B{match_row_1}:F{match_row_1}",
-                "values": [[season, distance_km, duration_h, elevation_gain_m, gpx_file_value]],
-            },
-            {
-                "range": f"{sheet_name}!H{match_row_1}:I{match_row_1}",
-                "values": [[activity_url, photo_urls_value or "none"]],
-            },
-        ]
-        for item in data:
-            sheets_service.spreadsheets().values().update(
-                spreadsheetId=spreadsheet_id,
-                range=item["range"],
-                valueInputOption="RAW",
-                body={"values": item["values"]},
-            ).execute()
+        write_bikepacking_autofilled_ranges(
+            sheets_service=sheets_service,
+            spreadsheet_id=spreadsheet_id,
+            sheet_name=sheet_name,
+            row_1=match_row_1,
+            season=season,
+            distance_km=distance_km,
+            duration_h=duration_h,
+            elevation_gain_m=elevation_gain_m,
+            gpx_file_value=gpx_file_value,
+            activity_url=activity_url,
+            photo_urls_value=photo_final,
+        )
         print(f"UPDATED bikepacking row {match_row_1} for URL {activity_url}")
         return {"matched": 1, "created": 0}
 
+    planned_row_1 = find_bike_row_by_planned_name(values, activity_name)
+    if planned_row_1 is not None:
+        write_bikepacking_autofilled_ranges(
+            sheets_service=sheets_service,
+            spreadsheet_id=spreadsheet_id,
+            sheet_name=sheet_name,
+            row_1=planned_row_1,
+            season=season,
+            distance_km=distance_km,
+            duration_h=duration_h,
+            elevation_gain_m=elevation_gain_m,
+            gpx_file_value=gpx_file_value,
+            activity_url=activity_url,
+            photo_urls_value=photo_final,
+        )
+        print(
+            f"UPDATED bikepacking row {planned_row_1} for planned name "
+            f"matching Strava title '{activity_name}' (column H was empty)"
+        )
+        return {"matched": 1, "created": 0}
+
     insert_row_1 = len(values) + 1
-    new_row = [
-        "",
-        season,
-        distance_km,
-        duration_h,
-        elevation_gain_m,
-        gpx_file_value,
-        "",
-        activity_url,
-        photo_urls_value or "none",
-        "",
-    ]
-    while len(new_row) < 10:
-        new_row.append("")
-    write_bikepacking_row_values(
+    write_bikepacking_autofilled_ranges(
         sheets_service=sheets_service,
         spreadsheet_id=spreadsheet_id,
         sheet_name=sheet_name,
         row_1=insert_row_1,
-        row_values=new_row,
+        season=season,
+        distance_km=distance_km,
+        duration_h=duration_h,
+        elevation_gain_m=elevation_gain_m,
+        gpx_file_value=gpx_file_value,
+        activity_url=activity_url,
+        photo_urls_value=photo_final,
     )
     print(f"CREATED bikepacking row {insert_row_1} for GPX {gpx_file_value}")
     return {"matched": 0, "created": 1}
@@ -1174,6 +1220,7 @@ def main() -> None:
                 sheets_service=sheets_service,
                 spreadsheet_id=spreadsheet_id,
                 sheet_name=sheet_name,
+                activity_name=activity.name,
                 season=activity.season,
                 distance_km=activity.distance_km,
                 duration_h=activity.duration_h,

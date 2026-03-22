@@ -32,7 +32,7 @@ If distances/durations use **European decimals** (`180,8`) **without** quoting t
 ## Data pipeline
 
 - **GPX → GeoJSON:** `scripts/convert_gpx.py` writes `data/bike/processed/<stem>.geojson` from `data/bike/raw/<stem>.gpx`.
-- **Strava sync** (`scripts/strava_sync.py --destination bikepacking`) writes to this tab (GPX under `data/bike/raw/`). Name, Project, and Journal path are left blank for manual entry.
+- **Strava sync** (`scripts/strava_sync.py --destination bikepacking`) writes to this tab (GPX under `data/bike/raw/`). It fills **B–F** and **H–I** only. **Match order:** (1) row whose **H** equals the Strava activity URL; (2) else row whose **A** matches the Strava activity title (normalized) and **H** is still empty (pre-planned placeholder row); (3) else append a new row. Name, Project, and Journal path in **A / G / J** are not overwritten by the script.
 
 ## Related
 
