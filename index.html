@@ -230,7 +230,7 @@
   </style>
 </head>
 <body>
-  <header>
+  <header id="site-header">
     <h1>Skaði</h1>
     <!-- Uncomment next line to show "Download CSV" for debugging (inspect exact data the site uses). -->
     <!-- <button id="download-csv" type="button" title="Télécharger le CSV utilisé par cet onglet">Télécharger le CSV</button> -->
@@ -241,9 +241,9 @@
   </ul>
   <div id="tab-content">
     <div id="map"></div>
-    <!-- Bike immersive journal (25% map / 75% panel); summits use #journal-panel -->
+    <!-- Bike immersive journal: map 25vh + journal (min 75vh); page scroll; sticky bar inside journal -->
     <div id="bike-journal-immersive" class="hidden" aria-hidden="true">
-      <div class="bike-journal-top">
+      <div class="bike-journal-sticky-bar">
         <header class="bike-journal-frozen-header">
           <button type="button" id="bike-journal-nav-prev" class="bike-journal-nav-btn" aria-label="Étape précédente">←</button>
           <h2 id="bike-journal-title" class="bike-journal-title">Étape</h2>

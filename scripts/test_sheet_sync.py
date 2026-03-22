@@ -8,6 +8,7 @@ from strava_sync import (
     get_sheet_id,
     parse_gpx_start_coords,
     season_from_month,
+    SHEET_TAB_SOMMETS,
     upsert_activity_summits_to_sheet,
 )
 
@@ -15,7 +16,7 @@ from strava_sync import (
 def main() -> None:
     # Same Google auth env vars as production sync.
     spreadsheet_id = _required_env("GOOGLE_SHEETS_SPREADSHEET_ID")
-    sheet_name = _required_env("GOOGLE_SHEETS_TAB_NAME")
+    sheet_name = SHEET_TAB_SOMMETS
     sa_json = _optional_env("GOOGLE_SERVICE_ACCOUNT_JSON")
 
     # Hardcoded test activity.

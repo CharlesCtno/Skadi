@@ -76,6 +76,9 @@ function bindJournalLayoutResize() {
             applyJournalPanelLayout();
             if (map) map.invalidateSize();
         }
+        if (document.body.classList.contains('bike-journal-open') && map) {
+            map.invalidateSize();
+        }
     });
 }
 
@@ -86,8 +89,38 @@ function resolveJournalFetchUrl(journalRelativePath) {
     return new URL(path, window.location.href).href;
 }
 
+/**
+ * Journal Markdown: configure marked once (raw HTML blocks pass through; GFM on).
+ * DOMPurify is not used here so inline styles, floats, and <img src="..."> survive.
+ * If you add DOMPurify later, allow at least: ADD_ATTR: ['style'], and img[src] (see DOMPurify docs).
+ */
+let journalMarkedInitialized = false;
+
+function ensureJournalMarkedConfigured() {
+    if (journalMarkedInitialized) return;
+    const M = typeof marked !== 'undefined' ? marked : (typeof window !== 'undefined' ? window.marked : undefined);
+    if (!M || typeof M.use !== 'function') {
+        journalMarkedInitialized = true;
+        return;
+    }
+    try {
+        if (typeof M.Renderer === 'function') {
+            M.use({
+                renderer: new M.Renderer(),
+                pedantic: false,
+                gfm: true,
+                breaks: false
+            });
+        }
+    } catch (_e) {
+        /* older marked — parse() may still work with defaults */
+    }
+    journalMarkedInitialized = true;
+}
+
 /** Render Markdown to HTML using marked.js (UMD exposes various shapes across versions). */
 function renderMarkdownToHtml(md) {
+    ensureJournalMarkedConfigured();
     const M = typeof marked !== 'undefined' ? marked : (typeof window !== 'undefined' ? window.marked : undefined);
     if (!M) return null;
     const text = String(md || '');
@@ -255,6 +288,93 @@ function updateBikeJournalNavButtons(chain, idx) {
     nextBtn.setAttribute('aria-label', isLast ? 'Fermer le récit' : 'Étape suivante');
 }
 
+/** After map container height changes to 25vh; not tied to scroll. */
+const BIKE_JOURNAL_MAP_RESIZE_MS = 300;
+
+/**
+ * Bike track line styles for immersive journal (unselected vs selected).
+ * Visible layer uses project color; hit layer stays transparent with a wide stroke for clicks.
+ */
+const BIKE_TRACK_JOURNAL_STYLE = {
+    visibleWeightUnselected: 3,
+    visibleWeightSelected: 6,
+    visibleOpacityUnselected: 1,
+    visibleOpacitySelected: 1,
+    hitWeight: 15,
+    hitOpacityUnselected: 0,
+    hitOpacitySelected: 0
+};
+
+function applyBikeTrackJournalStyle(track, selected) {
+    if (!track || track.dataType !== 'bike') return;
+    const lineColor = track.lineColor || '#808080';
+    const vis = selected
+        ? {
+              color: lineColor,
+              weight: BIKE_TRACK_JOURNAL_STYLE.visibleWeightSelected,
+              opacity: BIKE_TRACK_JOURNAL_STYLE.visibleOpacitySelected
+          }
+        : {
+              color: lineColor,
+              weight: BIKE_TRACK_JOURNAL_STYLE.visibleWeightUnselected,
+              opacity: BIKE_TRACK_JOURNAL_STYLE.visibleOpacityUnselected
+          };
+    const hit = selected
+        ? {
+              color: 'transparent',
+              weight: BIKE_TRACK_JOURNAL_STYLE.hitWeight,
+              opacity: BIKE_TRACK_JOURNAL_STYLE.hitOpacitySelected
+          }
+        : {
+              color: 'transparent',
+              weight: BIKE_TRACK_JOURNAL_STYLE.hitWeight,
+              opacity: BIKE_TRACK_JOURNAL_STYLE.hitOpacityUnselected
+          };
+    track.layer.eachLayer(function(layer) {
+        layer.setStyle(vis);
+    });
+    track.invisibleLayer.eachLayer(function(layer) {
+        layer.setStyle(hit);
+    });
+}
+
+/** Reset all bike tracks, then highlight every track matching gpxName (same file can appear as multiple layer groups). */
+function setBikeJournalActiveTrackByGpxName(gpxName) {
+    deselectAllBikeTracks();
+    if (!gpxName) return;
+    tracks.forEach((track) => {
+        if (track.dataType !== 'bike' || track.gpxName !== gpxName) return;
+        applyBikeTrackJournalStyle(track, true);
+        try {
+            track.invisibleLayer.bringToFront();
+            track.layer.bringToFront();
+        } catch (e) {
+            /* ignore */
+        }
+    });
+}
+
+function fitBikeJournalMapToActiveTrack(gpxName) {
+    if (!map || !gpxName) return;
+    const track = tracks.find((t) => t.dataType === 'bike' && t.gpxName === gpxName);
+    if (!track || !track.layer) return;
+    map.invalidateSize();
+    setTimeout(() => {
+        map.invalidateSize();
+        let bounds = track.bounds;
+        if (!bounds || (typeof bounds.isValid === 'function' && !bounds.isValid())) {
+            try {
+                bounds = track.layer.getBounds();
+            } catch (e) {
+                bounds = null;
+            }
+        }
+        if (bounds && typeof bounds.isValid === 'function' && bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [20, 20] });
+        }
+    }, BIKE_JOURNAL_MAP_RESIZE_MS);
+}
+
 function openBikeImmersiveJournal(entry) {
     const panel = document.getElementById('bike-journal-immersive');
     const titleEl = document.getElementById('bike-journal-title');
@@ -278,20 +398,17 @@ function openBikeImmersiveJournal(entry) {
     panel.classList.remove('hidden');
     panel.setAttribute('aria-hidden', 'false');
 
-    setTimeout(() => {
-        if (map) map.invalidateSize();
-    }, 320);
+    window.scrollTo(0, 0);
+
+    setBikeJournalActiveTrackByGpxName(entry.gpxName);
+
+    fitBikeJournalMapToActiveTrack(entry.gpxName);
 }
 
 function deselectAllBikeTracks() {
     tracks.forEach((track) => {
         if (track.dataType !== 'bike') return;
-        track.layer.eachLayer(function(layer) {
-            layer.setStyle({ weight: 3 });
-        });
-        track.invisibleLayer.eachLayer(function(layer) {
-            layer.setStyle({ color: 'transparent', weight: 15, opacity: 0 });
-        });
+        applyBikeTrackJournalStyle(track, false);
     });
     if (map) map.closePopup();
 }
@@ -308,7 +425,7 @@ function closeBikeImmersiveJournal() {
     deselectAllBikeTracks();
     setTimeout(() => {
         if (map) map.invalidateSize();
-    }, 320);
+    }, BIKE_JOURNAL_MAP_RESIZE_MS);
 }
 
 function initBikeJournalControls() {
@@ -556,11 +673,67 @@ function getTrackColorByType(type) {
 // Summits: published sheet (gid=0). Bike: published sheet (gid=2069199560).
 const SUMMITS_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRa2uc5r5sohJICr4Hb4TyQwlJxwtFCVk_NLqu_APJ6yF2FturE2YhbAhuaV_THn6AA0d9U_4BafJ9m/pub?gid=0&single=true&output=csv';
 
-/** Bike sheet CSV (no Type column): A Name, B Season, C Distance [km], D Duration [h], E Elevation Gain [m], F GPX File, G Project, H URL, I photo, J journal path — 10 columns (indices 0–9). */
+/** Bike sheet: fixed 10 columns A–J (indices 0–9). See docs/BIKE_SHEET_SCHEMA.md. */
 function getCsvPath() {
     return currentTab === 'bike'
-        ? 'https://docs.google.com/spreadsheets/d/e/2PACX-1vReJHYuqYbldPykQitSbHf--VtP6x1dq18OnmvGmajO6t-NzTtv6-uALyNzcipSZ5uRajKziZcZvS9N/pub?gid=2069199560&single=true&output=csv'
+        ? 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRa2uc5r5sohJICr4Hb4TyQwlJxwtFCVk_NLqu_APJ6yF2FturE2YhbAhuaV_THn6AA0d9U_4BafJ9m/pub?gid=2069199560&single=true&output=csv'
         : SUMMITS_SHEET_CSV_URL;
+}
+
+/**
+ * Bikepacking sheet — column letters and CSV indices (do not reorder; header row is row 1 only).
+ * | Index | Col | Field            |
+ * |-------|-----|------------------|
+ * | 0     | A   | Name             |
+ * | 1     | B   | Season           |
+ * | 2     | C   | Distance [km]    |
+ * | 3     | D   | Duration [h]     |
+ * | 4     | E   | Elevation [m]    |
+ * | 5     | F   | GPX File         |
+ * | 6     | G   | Project          |
+ * | 7     | H   | URL              |
+ * | 8     | I   | photo            |
+ * | 9     | J   | journal path     |
+ */
+const BIKE_COL = {
+    name: 0,
+    season: 1,
+    distanceKm: 2,
+    durationH: 3,
+    elevationM: 4,
+    gpxFile: 5,
+    project: 6,
+    url: 7,
+    photo: 8,
+    journalPath: 9
+};
+
+const BIKE_COLUMN_COUNT = 10;
+
+/** Pad parsed CSV cells to A–J; published CSV may omit trailing empty cells. */
+function padBikeColumns(columns) {
+    const c = columns.slice();
+    while (c.length < BIKE_COLUMN_COUNT) c.push('');
+    return c;
+}
+
+/**
+ * Read one bike data row from already-split cells (fixed layout). No header-based guessing.
+ */
+function readBikeSheetRow(cells) {
+    const c = padBikeColumns(cells);
+    return {
+        name: (c[BIKE_COL.name] || '').trim(),
+        season: (c[BIKE_COL.season] || '').trim(),
+        distance: (c[BIKE_COL.distanceKm] || '').trim(),
+        duration: (c[BIKE_COL.durationH] || '').trim(),
+        elevationGain: (c[BIKE_COL.elevationM] || '').trim(),
+        gpxFileCell: (c[BIKE_COL.gpxFile] || '').trim(),
+        projectRaw: (c[BIKE_COL.project] || '').trim(),
+        activityUrl: (c[BIKE_COL.url] || '').trim(),
+        photoUrls: (c[BIKE_COL.photo] || '').trim(),
+        journalEntry: (c[BIKE_COL.journalPath] || '').trim()
+    };
 }
 
 // Parse one CSV line (handles quoted fields and "" escape). Returns array of strings.
@@ -603,64 +776,26 @@ function detectCsvDelimiter(firstNonEmptyLine) {
     return ',';
 }
 
-/** Default bike column indices (A=Name … J=journal) when header detection fails. */
-const DEFAULT_BIKE_COLUMN_INDICES = {
-    name: 0,
-    season: 1,
-    distance: 2,
-    duration: 3,
-    elevation: 4,
-    gpx: 5,
-    project: 6,
-    url: 7,
-    photo: 8,
-    journal: 9
-};
-
-function normalizeBikeHeaderCell(h) {
-    return String(h || '')
-        .trim()
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '');
-}
-
 /**
- * Map header labels to column indices so GPX / journal / project stay correct for any column order.
+ * Pick ',' vs ';' for bike rows by minimizing deviation from 10 columns per row.
+ * Header alone is unreliable (no decimals); data rows with "180,8" break comma-splitting and shift column F.
  */
-function resolveBikeColumnIndicesFromHeaders(headerCells) {
-    const headers = headerCells.map(normalizeBikeHeaderCell);
-    const find = (predicate) => {
-        const i = headers.findIndex(predicate);
-        return i >= 0 ? i : null;
-    };
-    const gpx = find((h) => /\bgpx\b/.test(h) || h.includes('gpx file') || (h.includes('fichier') && h.includes('gpx')));
-    const journal = find((h) => h.includes('journal') || h.includes('recit'));
-    const project = find((h) => h.includes('project') || h.includes('projet'));
-    const name = find((h) => /^name$/.test(h) || h === 'nom');
-    const season = find((h) => h.includes('season') || h.includes('saison'));
-    const distance = find((h) => h.includes('distance'));
-    const duration = find((h) => h.includes('duration') || h.includes('duree'));
-    const elevation = find((h) => h.includes('elevation') || h.includes('denivele') || (h.includes('gain') && h.includes('m')));
-    const url = find((h) => h === 'url' || h.includes('strava') || h.includes('komoot'));
-    const photo = find((h) => h.includes('photo') || h.includes('image'));
+function detectBikeCsvDelimiter(allLines) {
+    if (!allLines || allLines.length < 2) return ',';
+    const sampleRows = allLines.slice(1, Math.min(12, allLines.length)).filter((l) => l.trim());
+    if (sampleRows.length === 0) return detectCsvDelimiter(allLines[0]);
 
-    return {
-        name: name ?? DEFAULT_BIKE_COLUMN_INDICES.name,
-        season: season ?? DEFAULT_BIKE_COLUMN_INDICES.season,
-        distance: distance ?? DEFAULT_BIKE_COLUMN_INDICES.distance,
-        duration: duration ?? DEFAULT_BIKE_COLUMN_INDICES.duration,
-        elevation: elevation ?? DEFAULT_BIKE_COLUMN_INDICES.elevation,
-        gpx: gpx ?? DEFAULT_BIKE_COLUMN_INDICES.gpx,
-        project: project ?? DEFAULT_BIKE_COLUMN_INDICES.project,
-        url: url ?? DEFAULT_BIKE_COLUMN_INDICES.url,
-        photo: photo ?? DEFAULT_BIKE_COLUMN_INDICES.photo,
-        journal: journal ?? DEFAULT_BIKE_COLUMN_INDICES.journal
-    };
-}
+    const deviationScore = (delim) =>
+        sampleRows.reduce((acc, line) => {
+            const n = parseCsvLineWithDelimiter(line, delim).length;
+            return acc + Math.abs(n - BIKE_COLUMN_COUNT);
+        }, 0);
 
-function maxBikeColumnIndex(B) {
-    return Math.max(...Object.values(B));
+    const sComma = deviationScore(',');
+    const sSemi = deviationScore(';');
+    if (sSemi < sComma) return ';';
+    if (sComma < sSemi) return ',';
+    return detectCsvDelimiter(allLines[0]);
 }
 
 function normalizeDecimal(value) {
@@ -1169,14 +1304,17 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
                     }
                     layer.on('click', function() {
                         track.bringToFront();
-                        layer.setStyle({ weight: 6 });
                         if (opensBikeImmersive) {
                             const entry = bikeEtapesRegistry.find((e) => e.gpxName === gpxName);
                             if (entry) openBikeImmersiveJournal(entry);
+                        } else {
+                            layer.setStyle({ weight: 6 });
                         }
                     });
                     layer.on('popupclose', function() {
-                        layer.setStyle({ weight: 3 });
+                        if (!opensBikeImmersive) {
+                            layer.setStyle({ weight: 3 });
+                        }
                     });
                 }
             }).addTo(map);
@@ -1191,18 +1329,21 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
                     }
                     layer.on('click', function() {
                         track.bringToFront();
-                        track.eachLayer(function(trackLayer) {
-                            trackLayer.setStyle({ weight: 6 });
-                        });
                         if (opensBikeImmersive) {
                             const entry = bikeEtapesRegistry.find((e) => e.gpxName === gpxName);
                             if (entry) openBikeImmersiveJournal(entry);
+                        } else {
+                            track.eachLayer(function(trackLayer) {
+                                trackLayer.setStyle({ weight: 6 });
+                            });
                         }
                     });
                     layer.on('popupclose', function() {
-                        track.eachLayer(function(trackLayer) {
-                            trackLayer.setStyle({ weight: 3 });
-                        });
+                        if (!opensBikeImmersive) {
+                            track.eachLayer(function(trackLayer) {
+                                trackLayer.setStyle({ weight: 3 });
+                            });
+                        }
                     });
                 }
             }).addTo(map);
@@ -1214,6 +1355,7 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
                 status: 'completed',
                 season: season,
                 gpxName: gpxName,
+                lineColor: color,
                 coordinates: data.features[0].geometry.coordinates,
                 bounds: track.getBounds(),
                 dataType: dataType
@@ -1293,12 +1435,8 @@ function loadData() {
             if (currentTab === 'summits') csvText = processSheetToSummitsRows(csvText);
             const allLines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
             let bikeCsvDelimiter = ',';
-            let bikeColumnIndices = DEFAULT_BIKE_COLUMN_INDICES;
             if (currentTab === 'bike' && allLines.length > 0) {
-                bikeCsvDelimiter = detectCsvDelimiter(allLines[0]);
-                bikeColumnIndices = resolveBikeColumnIndicesFromHeaders(
-                    parseCsvLineWithDelimiter(allLines[0], bikeCsvDelimiter)
-                );
+                bikeCsvDelimiter = detectBikeCsvDelimiter(allLines);
             }
             const rows = allLines.slice(1);
             const summitKeys = new Set();
@@ -1313,26 +1451,24 @@ function loadData() {
 
                 const isBikeTab = currentTab === 'bike';
                 const isSummitsTab = currentTab === 'summits';
-                const columns = isBikeTab
-                    ? parseCsvLineWithDelimiter(row, bikeCsvDelimiter)
-                    : parseCsvLine(row);
+
+                let columns;
+                if (isBikeTab) {
+                    columns = parseCsvLineWithDelimiter(row, bikeCsvDelimiter);
+                } else {
+                    columns = parseCsvLine(row);
+                }
+
                 // Summits: pad to 16 columns (A–P incl. Photo URLs + Journal) so Google CSV
                 // never drops trailing empty fields and we still read column T.
                 if (isSummitsTab) {
                     while (columns.length < 16) columns.push('');
                 }
-                if (isBikeTab) {
-                    const need = Math.max(10, maxBikeColumnIndex(bikeColumnIndices) + 1);
-                    while (columns.length < need) columns.push('');
-                }
-                const hasStatusCol = isSummitsTab;
-                const minColumns = isSummitsTab
-                    ? 16
-                    : isBikeTab
-                        ? Math.max(10, maxBikeColumnIndex(bikeColumnIndices) + 1)
-                        : 10;
 
-                if (columns.length < minColumns) {
+                const hasStatusCol = isSummitsTab;
+                const minColumns = isSummitsTab ? 16 : isBikeTab ? BIKE_COLUMN_COUNT : 10;
+
+                if (!isBikeTab && columns.length < minColumns) {
                     console.warn('Skipping malformed CSV row (not enough columns):', row);
                     return;
                 }
@@ -1359,19 +1495,19 @@ function loadData() {
                 let isToDoStatus = false;
 
                 if (isBikeTab) {
-                    const B = bikeColumnIndices;
-                    name = (columns[B.name] || '').trim();
-                    season = (columns[B.season] || '').trim();
+                    const br = readBikeSheetRow(columns);
+                    name = br.name;
+                    season = br.season;
                     type = '';
                     grade = '';
-                    distance = (columns[B.distance] || '').trim();
-                    duration = (columns[B.duration] || '').trim();
-                    elevationGain = (columns[B.elevation] || '').trim();
-                    gpxFileCell = (columns[B.gpx] || '').trim();
-                    projectRaw = (columns[B.project] || '').trim();
-                    activityUrl = (columns[B.url] || '').trim();
-                    photoUrls = (columns[B.photo] || '').trim();
-                    journalEntry = (columns[B.journal] || '').trim();
+                    distance = br.distance;
+                    duration = br.duration;
+                    elevationGain = br.elevationGain;
+                    gpxFileCell = br.gpxFileCell;
+                    projectRaw = br.projectRaw;
+                    activityUrl = br.activityUrl;
+                    photoUrls = br.photoUrls;
+                    journalEntry = br.journalEntry;
                     gpxFileRaw = gpxFileCell;
                     project = normalizeProjectName(projectRaw || 'No Project');
                 } else {
@@ -1433,8 +1569,14 @@ function loadData() {
                 const gpxFile = normalizeGpxBaseName(gpxFileRaw) || null;
                 if (isBikeTab && gpxFile && /^(bike|ride|run)$/i.test(gpxFile)) {
                     console.warn(
-                        '[Skadi bike] GPX cell looks like an activity label, not a filename. Check CSV delimiter (; vs ,) and the GPX File column.',
-                        { gpxFileCell, delimiter: bikeCsvDelimiter }
+                        '[Skadi bike] GPX cell parsed as a generic word — usually wrong column (CSV split). ' +
+                            'In Sheets, use ";" as locale separator or quote numbers like "180,8". See docs/BIKE_SHEET_SCHEMA.md.',
+                        {
+                            gpxFileCell,
+                            delimiterUsed: bikeCsvDelimiter,
+                            cellsInRow: columns.length,
+                            firstTenCellsPreview: padBikeColumns(columns).map((x) => String(x).slice(0, 40))
+                        }
                     );
                 }
                 let gpxName = (gpxFile ? gpxFile.replace(/_/g, ' ') : name).trim();

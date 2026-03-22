@@ -7,6 +7,13 @@ on:
         description: Exact Strava activity name to sync
         required: true
         type: string
+      destination:
+        description: Target Google Sheet tab (Sommets Progrès vs Bikepacking)
+        required: true
+        type: choice
+        options:
+          - sommets
+          - bikepacking
 
 permissions:
   contents: write
@@ -47,10 +54,10 @@ jobs:
           STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
           STRAVA_REFRESH_TOKEN: ${{ secrets.STRAVA_REFRESH_TOKEN }}
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
-          GOOGLE_SHEETS_TAB_NAME: ${{ secrets.GOOGLE_SHEETS_TAB_NAME }}
           ACTIVITY_NAME: ${{ inputs.activity_name }}
+          DESTINATION: ${{ inputs.destination }}
         run: |
-          python scripts/strava_sync.py --activity-name "${ACTIVITY_NAME}"
+          python scripts/strava_sync.py --activity-name "${ACTIVITY_NAME}" --destination "${DESTINATION}"
 
       - name: Convert only new GPX to GeoJSON
         run: |
@@ -89,6 +96,7 @@ jobs:
       - name: Commit and push GPX/state
         env:
           ACTIVITY_NAME: ${{ inputs.activity_name }}
+          DESTINATION: ${{ inputs.destination }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -97,7 +105,7 @@ jobs:
             echo "No changes to commit."
             exit 0
           fi
-          git commit -m "[strava-sync] Add GPX for activity ${ACTIVITY_NAME}"
+          git commit -m "[strava-sync] Add GPX for activity ${ACTIVITY_NAME} (${DESTINATION})"
           # Another workflow/user may have pushed to main while this job was running.
           # Rebase onto latest origin/main, then push.
           git pull --rebase origin main

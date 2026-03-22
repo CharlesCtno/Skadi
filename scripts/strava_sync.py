@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sys
 import time
 import argparse
 import xml.etree.ElementTree as ET
@@ -28,8 +29,14 @@ STATE_PATH = Path("data/strava_last_sync.json")
 SUMMITS_RAW_DIR = Path("data/raw")
 BIKE_RAW_DIR = Path("data/bike/raw")
 
-# Read through S for photo URLs in column S.
+# Google Sheet tab titles per sync destination (rename here if tabs are renamed in the spreadsheet).
+SHEET_TAB_SOMMETS = "Progrès"
+SHEET_TAB_BIKEPACKING = "Bikepacking"
+
+# Read through S for photo URLs in column S (Sommets tab).
 SHEET_RANGE = "A:S"
+# Bikepacking tab: A–J (Name, Season, Distance, Duration, Elevation, GPX, Project, URL, photo, Journal).
+BIKE_SHEET_RANGE = "A:J"
 
 BIKE_TYPES = {
     "Ride",
@@ -644,6 +651,7 @@ def insert_new_row_at(
     sheet_name: str,
     insert_row_1: int,
     row_values: List[str],
+    end_col_letter: str = "S",
 ) -> None:
     sheets_service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
@@ -664,13 +672,131 @@ def insert_new_row_at(
         },
     ).execute()
 
-    target_range = f"{sheet_name}!A{insert_row_1}:S{insert_row_1}"
+    target_range = f"{sheet_name}!A{insert_row_1}:{end_col_letter}{insert_row_1}"
     sheets_service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
         range=target_range,
         valueInputOption="RAW",
         body={"values": [row_values]},
     ).execute()
+
+
+def fail_destination_invalid() -> None:
+    print(
+        'ERROR: destination must be either "sommets" or "bikepacking"',
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+def parse_destination(raw: Optional[str]) -> str:
+    v = (raw or "").strip().lower()
+    if not v:
+        fail_destination_invalid()
+    if v in ("sommets", "bikepacking"):
+        return v
+    fail_destination_invalid()
+    return ""
+
+
+def is_strava_bike_activity(activity_type: str) -> bool:
+    return (activity_type or "").strip() in BIKE_TYPES
+
+
+def find_bike_row_by_strava_url(values: List[List[str]], activity_url: str) -> Optional[int]:
+    target = (activity_url or "").strip()
+    for row_1, row in enumerate(values, start=1):
+        if _row_cell(row, 7) == target:
+            return row_1
+    return None
+
+
+def upsert_bikepacking_activity_to_sheet(
+    sheets_service,
+    spreadsheet_id: str,
+    sheet_name: str,
+    sheet_id: int,
+    season: str,
+    distance_km: str,
+    duration_h: str,
+    elevation_gain_m: str,
+    gpx_file_value: str,
+    activity_url: str,
+    access_token: str,
+    activity_id: int,
+) -> Dict[str, int]:
+    """
+    Append or update Bikepacking tab row. No OSM. A (Name), G (Project), J (Journal) left blank.
+    """
+    photo_urls_value: Optional[str] = None
+    try:
+        urls = fetch_activity_photo_urls(access_token, activity_id)
+        photo_urls_value = "|".join(urls) if urls else "none"
+    except requests.RequestException as e:
+        print(
+            f"WARNING: Could not fetch photos for activity {activity_id}: {e}. "
+            "Writing 'none' to photo column."
+        )
+        photo_urls_value = "none"
+    time.sleep(1)
+
+    range_name = f"{sheet_name}!{BIKE_SHEET_RANGE}"
+    values_resp = (
+        sheets_service.spreadsheets()
+        .values()
+        .get(spreadsheetId=spreadsheet_id, range=range_name)
+        .execute()
+    )
+    values = values_resp.get("values", [])
+
+    match_row_1 = find_bike_row_by_strava_url(values, activity_url)
+    if match_row_1 is not None:
+        data = [
+            {
+                "range": f"{sheet_name}!B{match_row_1}:F{match_row_1}",
+                "values": [[season, distance_km, duration_h, elevation_gain_m, gpx_file_value]],
+            },
+            {
+                "range": f"{sheet_name}!H{match_row_1}:I{match_row_1}",
+                "values": [[activity_url, photo_urls_value or "none"]],
+            },
+        ]
+        for item in data:
+            sheets_service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id,
+                range=item["range"],
+                valueInputOption="RAW",
+                body={"values": item["values"]},
+            ).execute()
+        print(f"UPDATED bikepacking row {match_row_1} for URL {activity_url}")
+        return {"matched": 1, "created": 0}
+
+    insert_row_1 = len(values) + 1
+    new_row = [
+        "",
+        season,
+        distance_km,
+        duration_h,
+        elevation_gain_m,
+        gpx_file_value,
+        "",
+        activity_url,
+        photo_urls_value or "none",
+        "",
+    ]
+    while len(new_row) < 10:
+        new_row.append("")
+    insert_new_row_at(
+        sheets_service=sheets_service,
+        spreadsheet_id=spreadsheet_id,
+        sheet_id=sheet_id,
+        sheet_name=sheet_name,
+        insert_row_1=insert_row_1,
+        row_values=new_row,
+        end_col_letter="J",
+    )
+    print(f"CREATED bikepacking row {insert_row_1} for GPX {gpx_file_value}")
+    return {"matched": 0, "created": 1}
 
 
 def split_summit_names(activity_title: str) -> List[str]:
@@ -867,16 +993,29 @@ def main() -> None:
         dest="activity_name",
         help="Exact Strava activity name to sync (searches across all pages).",
     )
+    parser.add_argument(
+        "--destination",
+        dest="destination",
+        help='Sync target: "sommets" (Progrès tab) or "bikepacking" (Bikepacking tab). '
+        "Also reads DESTINATION env if unset.",
+    )
     args = parser.parse_args()
+
+    dest = parse_destination(args.destination or _optional_env("DESTINATION"))
 
     client_id = _required_env("STRAVA_CLIENT_ID")
     client_secret = _required_env("STRAVA_CLIENT_SECRET")
     refresh_token = _required_env("STRAVA_REFRESH_TOKEN")
     spreadsheet_id = _required_env("GOOGLE_SHEETS_SPREADSHEET_ID")
-    sheet_name = _required_env("GOOGLE_SHEETS_TAB_NAME")
+    sheet_name = SHEET_TAB_SOMMETS if dest == "sommets" else SHEET_TAB_BIKEPACKING
     sa_json = _optional_env("GOOGLE_SERVICE_ACCOUNT_JSON")
     manual_activity_name = (args.activity_name or _optional_env("ACTIVITY_NAME")).strip()
     is_manual_mode = bool(manual_activity_name)
+
+    if dest == "bikepacking" and not is_manual_mode:
+        raise RuntimeError(
+            "Bikepacking destination requires manual mode: set --activity-name or ACTIVITY_NAME."
+        )
 
     access_token = get_strava_access_token(client_id, client_secret, refresh_token)
     state_exists = STATE_PATH.exists()
@@ -938,16 +1077,27 @@ def main() -> None:
             continue
         if activity.start_date_epoch == after_epoch and activity.activity_id <= after_activity_id:
             continue
-        if (not is_manual_mode) and _normalize_activity_type(activity.type) != "hike":
-            print(
-                f"Skipping activity id={activity.activity_id} "
-                f"name='{activity.name}' type='{activity.type}' (only Hike is synced)."
-            )
-            last_epoch = max(last_epoch, activity.start_date_epoch)
-            last_activity_id = max(last_activity_id, activity.activity_id)
-            continue
+        if dest == "sommets":
+            if (not is_manual_mode) and _normalize_activity_type(activity.type) != "hike":
+                print(
+                    f"Skipping activity id={activity.activity_id} "
+                    f"name='{activity.name}' type='{activity.type}' (only Hike is synced)."
+                )
+                last_epoch = max(last_epoch, activity.start_date_epoch)
+                last_activity_id = max(last_activity_id, activity.activity_id)
+                continue
+        else:
+            if not is_strava_bike_activity(activity.type):
+                print(
+                    f"Skipping activity id={activity.activity_id} "
+                    f"name='{activity.name}' type='{activity.type}' "
+                    "(not a supported bike activity type)."
+                )
+                last_epoch = max(last_epoch, activity.start_date_epoch)
+                last_activity_id = max(last_activity_id, activity.activity_id)
+                continue
 
-        out_dir = SUMMITS_RAW_DIR
+        out_dir = SUMMITS_RAW_DIR if dest == "sommets" else BIKE_RAW_DIR
         out_dir.mkdir(parents=True, exist_ok=True)
 
         gpx_filename = activity_title_to_gpx_filename(activity.name)
@@ -979,37 +1129,62 @@ def main() -> None:
             continue
         gpx_rel_path.write_bytes(gpx_bytes)
 
-        lat, lon = parse_gpx_start_coords(gpx_bytes)
-        upsert_result = upsert_activity_summits_to_sheet(
-            sheets_service=sheets_service,
-            spreadsheet_id=spreadsheet_id,
-            sheet_name=sheet_name,
-            sheet_id=sheet_id,
-            activity_title=activity.name,
-            strava_activity_type=activity.type,
-            season=activity.season,
-            distance_km=activity.distance_km,
-            duration_h=activity.duration_h,
-            elevation_gain_m=activity.elevation_gain_m,
-            gpx_file_value=gpx_file_value,
-            activity_url=activity_url,
-            start_lat=lat,
-            start_lon=lon,
-            access_token=access_token,
-            activity_id=activity.activity_id,
-        )
+        if dest == "sommets":
+            lat, lon = parse_gpx_start_coords(gpx_bytes)
+            upsert_result = upsert_activity_summits_to_sheet(
+                sheets_service=sheets_service,
+                spreadsheet_id=spreadsheet_id,
+                sheet_name=sheet_name,
+                sheet_id=sheet_id,
+                activity_title=activity.name,
+                strava_activity_type=activity.type,
+                season=activity.season,
+                distance_km=activity.distance_km,
+                duration_h=activity.duration_h,
+                elevation_gain_m=activity.elevation_gain_m,
+                gpx_file_value=gpx_file_value,
+                activity_url=activity_url,
+                start_lat=lat,
+                start_lon=lon,
+                access_token=access_token,
+                activity_id=activity.activity_id,
+            )
+        else:
+            upsert_result = upsert_bikepacking_activity_to_sheet(
+                sheets_service=sheets_service,
+                spreadsheet_id=spreadsheet_id,
+                sheet_name=sheet_name,
+                sheet_id=sheet_id,
+                season=activity.season,
+                distance_km=activity.distance_km,
+                duration_h=activity.duration_h,
+                elevation_gain_m=activity.elevation_gain_m,
+                gpx_file_value=gpx_file_value,
+                activity_url=activity_url,
+                access_token=access_token,
+                activity_id=activity.activity_id,
+            )
 
         synced += 1
         synced_names.append(activity.name)
         sheet_matched_rows += int(upsert_result.get("matched", 0))
         sheet_created_rows += int(upsert_result.get("created", 0))
-        sheet_processed_summits += int(upsert_result.get("processed_summits", 0))
+        if dest == "sommets":
+            sheet_processed_summits += int(upsert_result.get("processed_summits", 0))
         last_epoch = max(last_epoch, activity.start_date_epoch)
         last_activity_id = max(last_activity_id, activity.activity_id)
-        print(
-            f"Synced activity id={activity.activity_id} name='{activity.name}' "
-            f"type={activity.type} gpx='{gpx_rel_path}' processed_summits={upsert_result['processed_summits']}"
-        )
+        if dest == "sommets":
+            print(
+                f"Synced activity id={activity.activity_id} name='{activity.name}' "
+                f"type={activity.type} gpx='{gpx_rel_path}' "
+                f"processed_summits={upsert_result['processed_summits']}"
+            )
+        else:
+            print(
+                f"Synced activity id={activity.activity_id} name='{activity.name}' "
+                f"type={activity.type} gpx='{gpx_rel_path}' "
+                f"bikepacking matched={upsert_result['matched']} created={upsert_result['created']}"
+            )
 
     state_advanced = (
         last_epoch != state["last_synced_epoch"]
@@ -1022,11 +1197,17 @@ def main() -> None:
         if len(synced_names) > 3:
             summary += f" (+{len(synced_names) - 3} more)"
         print(f"Synced {synced} activities. Summary: {summary}")
-        print(
-            "Sheet write summary: "
-            f"processed_summits={sheet_processed_summits}, "
-            f"matched_rows={sheet_matched_rows}, created_rows={sheet_created_rows}."
-        )
+        if dest == "sommets":
+            print(
+                "Sheet write summary: "
+                f"processed_summits={sheet_processed_summits}, "
+                f"matched_rows={sheet_matched_rows}, created_rows={sheet_created_rows}."
+            )
+        else:
+            print(
+                "Sheet write summary (bikepacking): "
+                f"matched_rows={sheet_matched_rows}, created_rows={sheet_created_rows}."
+            )
     elif state_advanced:
         save_state(last_epoch=last_epoch, last_activity_id=last_activity_id)
         print("No activities synced, but sync cursor advanced to avoid reprocessing.")
