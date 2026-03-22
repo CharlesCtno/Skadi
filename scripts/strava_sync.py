@@ -681,6 +681,29 @@ def insert_new_row_at(
     ).execute()
 
 
+def write_bikepacking_row_values(
+    sheets_service,
+    spreadsheet_id: str,
+    sheet_name: str,
+    row_1: int,
+    row_values: List[str],
+) -> None:
+    """
+    Write A:J for one row without insertDimension.
+
+    The Bikepacking tab may use sheet/range protection that allows editing cells but
+    blocks batchUpdate insertDimension ("protected cell or object"). Appending data
+    via values.update to the next row avoids that.
+    """
+    target_range = f"{sheet_name}!A{row_1}:J{row_1}"
+    sheets_service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=target_range,
+        valueInputOption="RAW",
+        body={"values": [row_values]},
+    ).execute()
+
+
 def fail_destination_invalid() -> None:
     print(
         'ERROR: destination must be either "sommets" or "bikepacking"',
@@ -715,7 +738,6 @@ def upsert_bikepacking_activity_to_sheet(
     sheets_service,
     spreadsheet_id: str,
     sheet_name: str,
-    sheet_id: int,
     season: str,
     distance_km: str,
     duration_h: str,
@@ -786,14 +808,12 @@ def upsert_bikepacking_activity_to_sheet(
     ]
     while len(new_row) < 10:
         new_row.append("")
-    insert_new_row_at(
+    write_bikepacking_row_values(
         sheets_service=sheets_service,
         spreadsheet_id=spreadsheet_id,
-        sheet_id=sheet_id,
         sheet_name=sheet_name,
-        insert_row_1=insert_row_1,
+        row_1=insert_row_1,
         row_values=new_row,
-        end_col_letter="J",
     )
     print(f"CREATED bikepacking row {insert_row_1} for GPX {gpx_file_value}")
     return {"matched": 0, "created": 1}
@@ -1154,7 +1174,6 @@ def main() -> None:
                 sheets_service=sheets_service,
                 spreadsheet_id=spreadsheet_id,
                 sheet_name=sheet_name,
-                sheet_id=sheet_id,
                 season=activity.season,
                 distance_km=activity.distance_km,
                 duration_h=activity.duration_h,
