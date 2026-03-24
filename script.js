@@ -468,22 +468,44 @@ function initBikeJournalControls() {
 // Initialize map
 function initMap() {
   map = L.map('map', {
-    zoomControl: false
+    zoomControl: false,
+    // Canvas paths scale better with many GeoJSON tracks than default SVG.
+    preferCanvas: true,
+    // Faster tile swaps (no fade); feels closer to “native” map apps.
+    fadeAnimation: false
   }).setView([46.2, 7.5], 8);
+  const tileCommon = {
+    // Load tiles while panning (not only after release) — smoother “refresh” when moving.
+    updateWhenIdle: false,
+    keepBuffer: 3
+  };
   if (isLocalDevHost()) {
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map);
+    L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      Object.assign(
+        {
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        },
+        tileCommon
+      )
+    ).addTo(map);
     return;
   }
 
-  L.tileLayer('https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}', {
-    attribution: '© <a href="https://www.mapbox.com/">Mapbox</a> © <a href="https://www.openstreetmap.org/">OpenStreetMap</a>',
-    tileSize: 512,
-    zoomOffset: -1,
-    id: 'mapbox/outdoors-v12',
-    accessToken: MAPBOX_ACCESS_TOKEN
-  }).addTo(map);
+  L.tileLayer(
+    'https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}',
+    Object.assign(
+      {
+        attribution:
+          '© <a href="https://www.mapbox.com/">Mapbox</a> © <a href="https://www.openstreetmap.org/">OpenStreetMap</a>',
+        tileSize: 512,
+        zoomOffset: -1,
+        id: 'mapbox/outdoors-v12',
+        accessToken: MAPBOX_ACCESS_TOKEN
+      },
+      tileCommon
+    )
+  ).addTo(map);
 }
 
 // Function to create a colored triangle icon with outline
