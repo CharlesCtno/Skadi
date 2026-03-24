@@ -1,0 +1,64 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build site with Mapbox token
+        env:
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+        run: |
+          mkdir -p _site
+          rsync -av --delete \
+            --exclude ".git/" \
+            --exclude ".github/" \
+            ./ _site/
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          token = os.environ.get("MAPBOX_TOKEN", "").strip()
+          if not token:
+              raise SystemExit("Missing repository secret: MAPBOX_TOKEN")
+
+          script_path = Path("_site/script.js")
+          placeholder = "YOUR_MAPBOX_TOKEN_HERE"
+          content = script_path.read_text(encoding="utf-8")
+          if placeholder not in content:
+              raise SystemExit(f"Placeholder '{placeholder}' not found in _site/script.js")
+
+          script_path.write_text(content.replace(placeholder, token), encoding="utf-8")
+          print("Injected MAPBOX_TOKEN into build artifact.")
+          PY
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
