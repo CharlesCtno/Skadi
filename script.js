@@ -472,18 +472,11 @@ function initMap() {
     // Canvas paths scale better with many GeoJSON tracks than default SVG.
     preferCanvas: true,
     // Faster tile swaps (no fade); feels closer to “native” map apps.
-    fadeAnimation: false,
-    // Without this, Leaflet scales old tiles during zoom while new z-tiles load — feels slow and blurry.
-    zoomAnimation: false,
-    markerZoomAnimation: false,
-    // Lower = stronger wheel zoom per gesture → fewer intermediate zoom stops (fewer tile waves).
-    wheelPxPerZoomLevel: 48
+    fadeAnimation: false
   }).setView([46.2, 7.5], 8);
   const tileCommon = {
     // Load tiles while panning (not only after release) — smoother “refresh” when moving.
     updateWhenIdle: false,
-    // Refresh tile grid while zoom gesture is in progress (Leaflet 1.7+).
-    updateWhenZooming: true,
     keepBuffer: 3
   };
   if (isLocalDevHost()) {
