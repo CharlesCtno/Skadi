@@ -25,6 +25,13 @@ let bikeEtapesRegistry = [];
 let bikeJournalOpen = false;
 let bikeJournalCurrentGpxName = null;
 
+const MAPBOX_ACCESS_TOKEN = 'YOUR_MAPBOX_TOKEN_HERE';
+
+function isLocalDevHost() {
+    const host = (window.location.hostname || '').toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local');
+}
+
 /** Position journal panel below the main header; match map height to remaining viewport (header + tabs). */
 function applyJournalPanelLayout() {
     const header = document.querySelector('header');
@@ -463,7 +470,20 @@ function initMap() {
   map = L.map('map', {
     zoomControl: false
   }).setView([46.2, 7.5], 8);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+  if (isLocalDevHost()) {
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+    return;
+  }
+
+  L.tileLayer('https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}', {
+    attribution: '© <a href="https://www.mapbox.com/">Mapbox</a> © <a href="https://www.openstreetmap.org/">OpenStreetMap</a>',
+    tileSize: 512,
+    zoomOffset: -1,
+    id: 'mapbox/outdoors-v12',
+    accessToken: MAPBOX_ACCESS_TOKEN
+  }).addTo(map);
 }
 
 // Function to create a colored triangle icon with outline

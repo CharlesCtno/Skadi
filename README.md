@@ -14,6 +14,7 @@ An **English UI toggle** is not planned as a requirement, only a possible long-t
 - **Data:** Google Sheet (published CSV) as source of truth + GeoJSON track files
 - **Pipeline:** Strava → GitHub Actions → Google Sheet + GPX files → auto-converted to GeoJSON → site refreshes
 - **Hosting:** GitHub Pages
+- **Basemap:** Mapbox **Outdoors** (`mapbox/outdoors-v12`) via Leaflet — set `MAPBOX_ACCESS_TOKEN` in `script.js` (create a token at [mapbox.com](https://www.mapbox.com/), restrict URLs to `https://charlesctno.github.io` and `http://localhost` for local dev)
 
 ## Data Flow
 
