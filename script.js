@@ -472,11 +472,18 @@ function initMap() {
     // Canvas paths scale better with many GeoJSON tracks than default SVG.
     preferCanvas: true,
     // Faster tile swaps (no fade); feels closer to “native” map apps.
-    fadeAnimation: false
+    fadeAnimation: false,
+    // Without this, Leaflet scales old tiles during zoom while new z-tiles load — feels slow and blurry.
+    zoomAnimation: false,
+    markerZoomAnimation: false,
+    // Lower = stronger wheel zoom per gesture → fewer intermediate zoom stops (fewer tile waves).
+    wheelPxPerZoomLevel: 48
   }).setView([46.2, 7.5], 8);
   const tileCommon = {
     // Load tiles while panning (not only after release) — smoother “refresh” when moving.
     updateWhenIdle: false,
+    // Refresh tile grid while zoom gesture is in progress (Leaflet 1.7+).
+    updateWhenZooming: true,
     keepBuffer: 3
   };
   if (isLocalDevHost()) {
@@ -492,8 +499,14 @@ function initMap() {
     return;
   }
 
+  // HiDPI: Mapbox 256 + @2x → 512px images; pair with tileSize 512 / zoomOffset -1 (Mapbox + Leaflet recipe).
+  // Standard DPR: explicit /tiles/512/… (old URL omitted tile size and looked soft when scaled).
+  const mapboxRasterUrl =
+    (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1) >= 2
+      ? 'https://api.mapbox.com/styles/v1/{id}/tiles/256/{z}/{x}/{y}@2x?access_token={accessToken}'
+      : 'https://api.mapbox.com/styles/v1/{id}/tiles/512/{z}/{x}/{y}?access_token={accessToken}';
   L.tileLayer(
-    'https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}',
+    mapboxRasterUrl,
     Object.assign(
       {
         attribution:
