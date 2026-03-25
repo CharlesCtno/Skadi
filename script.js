@@ -30,6 +30,15 @@ let bikeEtapesRegistry = [];
 let bikeJournalOpen = false;
 let bikeJournalCurrentGpxName = null;
 
+// Chatbot "Mode 2" (recommendation) view: optionally tilt map to make 3D feel enabled.
+// We keep this as a lightweight pitch toggle (Outdoors style already contains 3D buildings).
+let skadiChat3DEnabled = false;
+let skadiChat3DSavedPitch = null;
+let skadiChat3DSavedBearing = null;
+const SKADI_CHAT_2D_PITCH = 0;
+const SKADI_CHAT_3D_PITCH = 55;
+const SKADI_CHAT_3D_BEARING = 0;
+
 /** Monotonic id for Mapbox GL source/layer ids (must stay valid in style JSON). */
 let skadiLayerSerial = 0;
 
@@ -2557,6 +2566,7 @@ function parseFilterIntent(message) {
 }
 
 function resetMapForChatQuery() {
+    disableSkadiChat3DMode();
     activeRecommendationKeys = null;
     latestFilterState = { activityType: 'all', status: 'all', season: 'all', name: '' };
     applyFilters(latestFilterState);
@@ -2624,6 +2634,46 @@ function formatElevationForChat(elevationM) {
 function getRelativeDifference(actual, target) {
     const denominator = Math.max(Math.abs(target), 0.0001);
     return Math.abs(actual - target) / denominator;
+}
+
+function enableSkadiChat3DMode() {
+    if (!map) return;
+    try {
+        // Save current camera so we can restore it precisely.
+        const currPitch = typeof map.getPitch === 'function' ? map.getPitch() : null;
+        const currBearing = typeof map.getBearing === 'function' ? map.getBearing() : null;
+        if (skadiChat3DSavedPitch === null) skadiChat3DSavedPitch = currPitch;
+        if (skadiChat3DSavedBearing === null) skadiChat3DSavedBearing = currBearing;
+
+        map.setPitch(SKADI_CHAT_3D_PITCH);
+        // Keep current bearing to avoid a jarring camera rotation.
+        if (currBearing != null) map.setBearing(currBearing);
+        else map.setBearing(SKADI_CHAT_3D_BEARING);
+        skadiChat3DEnabled = true;
+    } catch (_e) {
+        // If camera methods aren't available for some reason, fail silently.
+    }
+}
+
+function disableSkadiChat3DMode() {
+    if (!map || !skadiChat3DEnabled) {
+        skadiChat3DEnabled = false;
+        skadiChat3DSavedPitch = null;
+        skadiChat3DSavedBearing = null;
+        return;
+    }
+    try {
+        const pitchToRestore = skadiChat3DSavedPitch != null ? skadiChat3DSavedPitch : SKADI_CHAT_2D_PITCH;
+        const bearingToRestore = skadiChat3DSavedBearing != null ? skadiChat3DSavedBearing : SKADI_CHAT_3D_BEARING;
+        map.setPitch(pitchToRestore);
+        map.setBearing(bearingToRestore);
+        skadiChat3DEnabled = false;
+    } catch (_e) {
+        skadiChat3DEnabled = false;
+    } finally {
+        skadiChat3DSavedPitch = null;
+        skadiChat3DSavedBearing = null;
+    }
 }
 
 function getRecommendationMatches(intent) {
@@ -2957,6 +3007,8 @@ function initSkadiChatbot() {
                 });
                 const selection = new Set(matches.map((item) => item.key));
                 applyRecommendationVisibility(selection);
+                // Mode 2: tilt the camera to make 3D buildings/relief feel active.
+                enableSkadiChat3DMode();
                 // Store for the "contact Charles" flow.
                 const recommendationReplyText = buildRecommendationReply(matches, location ? location.name : null, replyPrefix);
                 skadiLastMode2Request = userText;
