@@ -2565,6 +2565,28 @@ function resetMapForChatQuery() {
     } else {
         map.setView([46.2, 7.5], 8);
     }
+    // Back to flat 2D view when leaving Mode 2 / recommendations.
+    if (map && typeof map.setPitch === 'function') {
+        try { map.setPitch(0); } catch (_e) { /* ignore */ }
+    }
+}
+
+function applyMode2Locked3DView() {
+    if (!map) return;
+    // Keep the camera "3D-ish" (tilted) but lock rotation so the user can only pan/zoom.
+    try {
+        if (map.dragRotate && typeof map.dragRotate.disable === 'function') map.dragRotate.disable();
+        if (map.touchZoomRotate && typeof map.touchZoomRotate.disableRotation === 'function') map.touchZoomRotate.disableRotation();
+    } catch (_e) {
+        /* ignore */
+    }
+    try {
+        const targetPitch = 55;
+        if (typeof map.easeTo === 'function') map.easeTo({ pitch: targetPitch, duration: 400 });
+        else if (typeof map.setPitch === 'function') map.setPitch(targetPitch);
+    } catch (_e) {
+        /* ignore */
+    }
 }
 
 function getVisibleActivityCount() {
@@ -2957,6 +2979,8 @@ function initSkadiChatbot() {
                 });
                 const selection = new Set(matches.map((item) => item.key));
                 applyRecommendationVisibility(selection);
+                // Mode 2: tilt the map for a 3D-like view but lock rotation.
+                applyMode2Locked3DView();
                 // Store for the "contact Charles" flow.
                 const recommendationReplyText = buildRecommendationReply(matches, location ? location.name : null, replyPrefix);
                 skadiLastMode2Request = userText;
