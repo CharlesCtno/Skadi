@@ -36,8 +36,10 @@ let skadiChat3DEnabled = false;
 let skadiChat3DSavedPitch = null;
 let skadiChat3DSavedBearing = null;
 const SKADI_CHAT_2D_PITCH = 0;
-const SKADI_CHAT_3D_PITCH = 55;
+const SKADI_CHAT_3D_PITCH = 20;
 const SKADI_CHAT_3D_BEARING = 0;
+const SKADI_CHAT_3D_PITCH_MIN = 0;
+const SKADI_CHAT_3D_PITCH_MAX = 70;
 
 const SKADI_CHAT_3D_TERRAIN_SOURCE_ID = 'skadi-chat-3d-terrain-dem';
 const SKADI_CHAT_3D_TERRAIN_SOURCE_URL = 'mapbox://mapbox.mapbox-terrain-dem-v1';
@@ -45,6 +47,9 @@ const SKADI_CHAT_3D_TERRAIN_EXAGGERATION = 1.3;
 
 const SKADI_CHAT_3D_SKY_LAYER_ID = 'skadi-chat-3d-sky';
 const SKADI_CHAT_3D_BUILDINGS_LAYER_ID = 'skadi-chat-3d-buildings';
+
+let skadiChat3DClampGuard = false;
+let skadiChat3DMoveListener = null;
 
 /** Monotonic id for Mapbox GL source/layer ids (must stay valid in style JSON). */
 let skadiLayerSerial = 0;
@@ -2717,6 +2722,34 @@ function enableSkadiChat3DMode() {
         }
 
         skadiChat3DEnabled = true;
+
+        // Rotation controls: allow mouse rotation only. Touch rotation stays disabled.
+        try {
+            if (map.dragRotate && typeof map.dragRotate.enable === 'function') map.dragRotate.enable();
+            if (map.touchZoomRotate && typeof map.touchZoomRotate.disableRotation === 'function') map.touchZoomRotate.disableRotation();
+        } catch (_e) {
+            // ignore
+        }
+
+        // Clamp pitch while 3D is enabled to keep the camera stable.
+        if (!skadiChat3DMoveListener && typeof map.on === 'function') {
+            skadiChat3DMoveListener = function () {
+                if (!skadiChat3DEnabled || skadiChat3DClampGuard) return;
+                const p = typeof map.getPitch === 'function' ? map.getPitch() : null;
+                if (!Number.isFinite(p)) return;
+                if (p >= SKADI_CHAT_3D_PITCH_MIN && p <= SKADI_CHAT_3D_PITCH_MAX) return;
+                const clamped = Math.max(SKADI_CHAT_3D_PITCH_MIN, Math.min(SKADI_CHAT_3D_PITCH_MAX, p));
+                skadiChat3DClampGuard = true;
+                try {
+                    map.setPitch(clamped);
+                } catch (_e) {
+                    // ignore
+                } finally {
+                    skadiChat3DClampGuard = false;
+                }
+            };
+            map.on('move', skadiChat3DMoveListener);
+        }
     } catch (_e) {
         // If camera methods aren't available for some reason, fail silently.
     }
@@ -2727,6 +2760,21 @@ function disableSkadiChat3DMode() {
         skadiChat3DEnabled = false;
         skadiChat3DSavedPitch = null;
         skadiChat3DSavedBearing = null;
+        // Safety: remove clamp listener and restore rotation controls.
+        try {
+            if (map && skadiChat3DMoveListener && typeof map.off === 'function') map.off('move', skadiChat3DMoveListener);
+        } catch (_e) {
+            // ignore
+        } finally {
+            skadiChat3DMoveListener = null;
+        }
+        skadiChat3DClampGuard = false;
+        try {
+            if (map && map.dragRotate && typeof map.dragRotate.disable === 'function') map.dragRotate.disable();
+            if (map && map.touchZoomRotate && typeof map.touchZoomRotate.disableRotation === 'function') map.touchZoomRotate.disableRotation();
+        } catch (_e) {
+            // ignore
+        }
         return;
     }
     try {
@@ -2771,6 +2819,20 @@ function disableSkadiChat3DMode() {
     } finally {
         skadiChat3DSavedPitch = null;
         skadiChat3DSavedBearing = null;
+        skadiChat3DClampGuard = false;
+        try {
+            if (skadiChat3DMoveListener && typeof map.off === 'function') map.off('move', skadiChat3DMoveListener);
+        } catch (_e) {
+            // ignore
+        } finally {
+            skadiChat3DMoveListener = null;
+        }
+        try {
+            if (map && map.dragRotate && typeof map.dragRotate.disable === 'function') map.dragRotate.disable();
+            if (map && map.touchZoomRotate && typeof map.touchZoomRotate.disableRotation === 'function') map.touchZoomRotate.disableRotation();
+        } catch (_e) {
+            // ignore
+        }
     }
 }
 
