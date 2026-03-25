@@ -241,6 +241,33 @@
   border-radius: 2px;
 }
 
+/* Bike tab: 3D / 2D map toggle (same slot as Skadi on Sommets) */
+#bike-map-3d-toggle {
+  position: absolute;
+  right: 12px;
+  bottom: 28px;
+  z-index: 1001;
+  width: 42px;
+  height: 42px;
+  border: none;
+  border-radius: 50%;
+  background: #333;
+  color: #fff;
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+}
+
+#bike-map-3d-toggle.hidden {
+  display: none;
+}
+
+#bike-map-3d-toggle:hover {
+  background: #444;
+}
+
 /* Skadi chatbot */
 #skadi-chat-toggle {
   position: absolute;

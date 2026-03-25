@@ -29,6 +29,8 @@ let journalLayoutResizeBound = false;
 let bikeEtapesRegistry = [];
 let bikeJournalOpen = false;
 let bikeJournalCurrentGpxName = null;
+/** If true, restore map 3D after closing immersive bike journal (session-only). */
+let bikeMap3DResumeAfterJournal = false;
 
 // Chatbot "Mode 2" (recommendation) view: enable true 3D (terrain + building extrusions),
 // while keeping normal 2D for Mode 1/filter and for other UI states.
@@ -406,6 +408,11 @@ function openBikeImmersiveJournal(entry) {
     const statsEl = document.getElementById('bike-journal-stats');
     if (!panel || !titleEl || !bodyEl || !statsEl || !entry) return;
 
+    if (!bikeJournalOpen) {
+        bikeMap3DResumeAfterJournal = !!skadiChat3DEnabled;
+    }
+    disableSkadiChat3DMode();
+
     bikeJournalCurrentGpxName = entry.gpxName;
     bikeJournalOpen = true;
     document.body.classList.add('bike-journal-open');
@@ -421,6 +428,8 @@ function openBikeImmersiveJournal(entry) {
 
     panel.classList.remove('hidden');
     panel.setAttribute('aria-hidden', 'false');
+
+    updateBikeMap3DToggleButton();
 
     window.scrollTo(0, 0);
 
@@ -447,8 +456,15 @@ function closeBikeImmersiveJournal() {
     bikeJournalOpen = false;
     bikeJournalCurrentGpxName = null;
     deselectAllBikeTracks();
+    const shouldResume3D = bikeMap3DResumeAfterJournal;
+    bikeMap3DResumeAfterJournal = false;
+    updateBikeMap3DToggleButton();
     setTimeout(() => {
         if (map) map.invalidateSize();
+        if (currentTab === 'bike' && shouldResume3D && !isLocalDevHost()) {
+            enableSkadiChat3DMode();
+        }
+        updateBikeMap3DToggleButton();
     }, BIKE_JOURNAL_MAP_RESIZE_MS);
 }
 
@@ -2386,6 +2402,8 @@ document.querySelectorAll('#tabs a').forEach(tab => {
 
         // Set current tab
         currentTab = this.getAttribute('data-tab');
+        bikeMap3DResumeAfterJournal = false;
+        disableSkadiChat3DMode();
         closeJournalPanel();
         closeBikeImmersiveJournal();
 
@@ -2425,6 +2443,8 @@ document.querySelectorAll('#tabs a').forEach(tab => {
         } else {
             map.setView([46.2, 7.5], 8); // Default view for summits
         }
+
+        updateBikeMap3DToggleButton();
     });
 });
 
@@ -2866,6 +2886,24 @@ function disableSkadiChat3DMode() {
         } catch (_e) {
             // ignore
         }
+    }
+}
+
+function updateBikeMap3DToggleButton() {
+    const btn = document.getElementById('bike-map-3d-toggle');
+    if (!btn) return;
+    const show = currentTab === 'bike' && !bikeJournalOpen && !isLocalDevHost();
+    if (!show) {
+        btn.classList.add('hidden');
+        return;
+    }
+    btn.classList.remove('hidden');
+    if (skadiChat3DEnabled) {
+        btn.textContent = '2D';
+        btn.setAttribute('aria-label', 'Revenir à la carte plate');
+    } else {
+        btn.textContent = '3D';
+        btn.setAttribute('aria-label', 'Afficher la carte en 3D');
     }
 }
 
@@ -3402,6 +3440,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     initBikeJournalControls();
 
+    const bikeMap3dToggleBtn = document.getElementById('bike-map-3d-toggle');
+    if (bikeMap3dToggleBtn) {
+        bikeMap3dToggleBtn.addEventListener('click', function() {
+            if (currentTab !== 'bike' || bikeJournalOpen || isLocalDevHost()) return;
+            if (skadiChat3DEnabled) {
+                disableSkadiChat3DMode();
+            } else {
+                enableSkadiChat3DMode();
+            }
+            updateBikeMap3DToggleButton();
+        });
+    }
+
     function whenMapStyleReady(fn) {
         if (typeof map.isStyleLoaded === 'function' && map.isStyleLoaded()) {
             fn();
@@ -3412,5 +3463,6 @@ document.addEventListener('DOMContentLoaded', function() {
     whenMapStyleReady(function () {
         map.setView([46.2, 7.5], 8);
         loadData();
+        updateBikeMap3DToggleButton();
     });
 });
