@@ -155,12 +155,14 @@
   right: 4px !important;
 }
 
-/* Legend FAB + gap to 3D toggle — tweak --skadi-3d-gap (and optionally --skadi-legend-fab-*) to align with #map-3d-toggle-debug on localhost */
+/* Bottom-left FAB row: 3D (left) then gap then legend “i” — tweak --skadi-3d-gap / --skadi-legend-fab-*; debug button on localhost matches #map-3d-toggle */
 :root {
   --skadi-legend-fab-left: 12px;
   --skadi-legend-fab-bottom: 28px;
   --skadi-legend-fab-size: 42px;
   --skadi-3d-gap: 8px;
+  /* Horizontal position of the legend “i” FAB (right-hand of the pair) */
+  --skadi-legend-toggle-left: calc(var(--skadi-legend-fab-left) + var(--skadi-legend-fab-size) + var(--skadi-3d-gap));
   /* Same as tab underline (index.html #tabs li a.active) */
   --skadi-accent: #45818e;
   --skadi-fab-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
@@ -170,7 +172,7 @@
 /* Hidden legend toggle and panel */
 #legend-toggle-btn {
   position: absolute;
-  left: var(--skadi-legend-fab-left);
+  left: var(--skadi-legend-toggle-left);
   bottom: var(--skadi-legend-fab-bottom);
   z-index: 1001;
   width: var(--skadi-legend-fab-size);
@@ -197,6 +199,7 @@
   display: none;
 }
 
+/* Panel stays left-aligned with the map edge like before the 3D / “i” swap */
 #map-legend {
   position: absolute;
   left: var(--skadi-legend-fab-left);
@@ -257,11 +260,11 @@
   border-radius: 2px;
 }
 
-/* Map 3D / 2D toggle — to the right of the legend FAB (not inside the legend panel) */
+/* Map 3D / 2D toggle — left of the legend “i” FAB (not inside the legend panel) */
 #map-3d-toggle,
 #map-3d-toggle-debug {
   position: absolute;
-  left: calc(var(--skadi-legend-fab-left) + var(--skadi-legend-fab-size) + var(--skadi-3d-gap));
+  left: var(--skadi-legend-fab-left);
   bottom: var(--skadi-legend-fab-bottom);
   z-index: 1002;
   width: 42px;
