@@ -30,14 +30,21 @@ let bikeEtapesRegistry = [];
 let bikeJournalOpen = false;
 let bikeJournalCurrentGpxName = null;
 
-// Chatbot "Mode 2" (recommendation) view: optionally tilt map to make 3D feel enabled.
-// We keep this as a lightweight pitch toggle (Outdoors style already contains 3D buildings).
+// Chatbot "Mode 2" (recommendation) view: enable true 3D (terrain + building extrusions),
+// while keeping normal 2D for Mode 1/filter and for other UI states.
 let skadiChat3DEnabled = false;
 let skadiChat3DSavedPitch = null;
 let skadiChat3DSavedBearing = null;
 const SKADI_CHAT_2D_PITCH = 0;
 const SKADI_CHAT_3D_PITCH = 55;
 const SKADI_CHAT_3D_BEARING = 0;
+
+const SKADI_CHAT_3D_TERRAIN_SOURCE_ID = 'skadi-chat-3d-terrain-dem';
+const SKADI_CHAT_3D_TERRAIN_SOURCE_URL = 'mapbox://mapbox.mapbox-terrain-dem-v1';
+const SKADI_CHAT_3D_TERRAIN_EXAGGERATION = 1.3;
+
+const SKADI_CHAT_3D_SKY_LAYER_ID = 'skadi-chat-3d-sky';
+const SKADI_CHAT_3D_BUILDINGS_LAYER_ID = 'skadi-chat-3d-buildings';
 
 /** Monotonic id for Mapbox GL source/layer ids (must stay valid in style JSON). */
 let skadiLayerSerial = 0;
@@ -2649,6 +2656,66 @@ function enableSkadiChat3DMode() {
         // Keep current bearing to avoid a jarring camera rotation.
         if (currBearing != null) map.setBearing(currBearing);
         else map.setBearing(SKADI_CHAT_3D_BEARING);
+
+        // Enable terrain + sky when the style is backed by vector sources (prod Mapbox style).
+        // For the local raster dev style, this may fail; we fall back to pitch only.
+        try {
+            if (typeof map.getSource === 'function' && !map.getSource(SKADI_CHAT_3D_TERRAIN_SOURCE_ID)) {
+                map.addSource(SKADI_CHAT_3D_TERRAIN_SOURCE_ID, {
+                    type: 'raster-dem',
+                    url: SKADI_CHAT_3D_TERRAIN_SOURCE_URL,
+                    tileSize: 512,
+                    maxzoom: 14
+                });
+            }
+            if (typeof map.setTerrain === 'function') {
+                map.setTerrain({ source: SKADI_CHAT_3D_TERRAIN_SOURCE_ID, exaggeration: SKADI_CHAT_3D_TERRAIN_EXAGGERATION });
+            }
+        } catch (_e) {
+            // Terrain is optional; don't block the feature if unavailable.
+        }
+
+        // Add 3D buildings extrusions (only if the vector `composite` source exists).
+        try {
+            if (typeof map.getSource === 'function' && typeof map.getLayer === 'function' && !map.getLayer(SKADI_CHAT_3D_BUILDINGS_LAYER_ID)) {
+                // `composite` + `building` source-layer are present in Mapbox's default vector styles.
+                if (map.getSource('composite')) {
+                    const beforeId = (typeof map.getLayer === 'function' && map.getLayer('waterway-label')) ? 'waterway-label' : undefined;
+                    map.addLayer({
+                        id: SKADI_CHAT_3D_BUILDINGS_LAYER_ID,
+                        type: 'fill-extrusion',
+                        source: 'composite',
+                        'source-layer': 'building',
+                        minzoom: 14,
+                        filter: ['==', ['get', 'extrude'], 'true'],
+                        paint: {
+                            'fill-extrusion-color': '#9aa3ad',
+                            'fill-extrusion-height': ['coalesce', ['get', 'height'], 0],
+                            'fill-extrusion-base': ['coalesce', ['get', 'min_height'], 0],
+                            'fill-extrusion-opacity': 0.85
+                        }
+                    }, beforeId);
+                }
+            }
+
+            // Sky layer helps sell the 3D look when terrain is enabled.
+            if (typeof map.getLayer === 'function' && !map.getLayer(SKADI_CHAT_3D_SKY_LAYER_ID)) {
+                const beforeId = (typeof map.getLayer === 'function' && map.getLayer('sky')) ? 'sky' : undefined;
+                map.addLayer({
+                    id: SKADI_CHAT_3D_SKY_LAYER_ID,
+                    type: 'sky',
+                    paint: {
+                        'sky-type': 'atmosphere',
+                        'sky-atmosphere-sun': [0, 0],
+                        'sky-atmosphere-sun-intensity': 15,
+                        'sky-atmosphere-color': '#87a6c8'
+                    }
+                }, beforeId);
+            }
+        } catch (_e) {
+            // Building/sky extrusions are optional; don't block pitch mode.
+        }
+
         skadiChat3DEnabled = true;
     } catch (_e) {
         // If camera methods aren't available for some reason, fail silently.
@@ -2665,6 +2732,37 @@ function disableSkadiChat3DMode() {
     try {
         const pitchToRestore = skadiChat3DSavedPitch != null ? skadiChat3DSavedPitch : SKADI_CHAT_2D_PITCH;
         const bearingToRestore = skadiChat3DSavedBearing != null ? skadiChat3DSavedBearing : SKADI_CHAT_3D_BEARING;
+
+        // Turn off terrain first so removed sources/layers don't conflict.
+        try {
+            if (typeof map.setTerrain === 'function') map.setTerrain(null);
+        } catch (_e) {
+            // ignore
+        }
+
+        // Remove our custom layers/sources if present.
+        try {
+            if (typeof map.getLayer === 'function' && map.getLayer(SKADI_CHAT_3D_BUILDINGS_LAYER_ID)) {
+                map.removeLayer(SKADI_CHAT_3D_BUILDINGS_LAYER_ID);
+            }
+        } catch (_e) {
+            // ignore
+        }
+        try {
+            if (typeof map.getLayer === 'function' && map.getLayer(SKADI_CHAT_3D_SKY_LAYER_ID)) {
+                map.removeLayer(SKADI_CHAT_3D_SKY_LAYER_ID);
+            }
+        } catch (_e) {
+            // ignore
+        }
+        try {
+            if (typeof map.getSource === 'function' && map.getSource(SKADI_CHAT_3D_TERRAIN_SOURCE_ID)) {
+                map.removeSource(SKADI_CHAT_3D_TERRAIN_SOURCE_ID);
+            }
+        } catch (_e) {
+            // ignore
+        }
+
         map.setPitch(pitchToRestore);
         map.setBearing(bearingToRestore);
         skadiChat3DEnabled = false;
