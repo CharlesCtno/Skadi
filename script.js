@@ -604,11 +604,22 @@ function createSummitMapboxMarker(lat, lng, color, isCompleted, popupHtml) {
     el.className = 'summit-icon';
     el.innerHTML = getTriangleIconHtml(color, isCompleted);
     const popup = new mapboxgl.Popup({
-        closeButton: true,
+        closeButton: false,
         offset: 18,
         maxWidth: 'min(90vw, 420px)'
     }).setHTML(popupHtml);
     const m = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([lng, lat]).setPopup(popup);
+
+    popup.on('open', function () {
+        const container = popup.getElement();
+        const closeBtn = container && container.querySelector('.summit-popup-close');
+        if (!closeBtn) return;
+        closeBtn.onclick = function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            popup.remove();
+        };
+    });
 
     return {
         _skadiOnMap: false,
@@ -687,7 +698,7 @@ function buildSkadiTrackMapAdapter(track) {
                     layout: { 'line-join': 'round', 'line-cap': 'round' },
                     paint: {
                         'line-color': '#000000',
-                        'line-width': 15,
+                        'line-width': 10,
                         'line-opacity': 0.01
                     }
                 });
@@ -780,14 +791,25 @@ function parseCotationToIndex(gradeRaw) {
     return Number.isFinite(idx) ? idx : null;
 }
 
+/**
+ * Mode 2 location triggers: French + common ASCII typing (no accents) + proche.
+ * - "pr[eè]s de" matches "près de" and "pres de"
+ * - "côté de|cote de", "à côté de|a cote de", "au[- ]dessus de" for hyphen or space
+ * - "proche de" and "proche d'Annecy" (ASCII or curly apostrophe)
+ */
+const SKADI_MODE2_LOC_STD =
+    '(?:pr[eè]s de|côté de|cote de|depuis|au[- ]dessus de|à côté de|a cote de|vers|dans les|dans le|en partant de|proche de)';
+const SKADI_MODE2_LOC_DAPOS = "proche d['\u2019]";
+const SKADI_MODE2_LOC_END = String.raw`(?=$|[.,;:!?]|\b(avec|et|pour|de)\b)`;
+
 function extractLocationFromMessage(message) {
     const text = (message || '').trim();
     if (!text) return null;
 
-    // Triggers (case-insensitive) + capture the following place name.
-    // Stop at punctuation or at the stop words: "avec", "et", "pour", "de" (word).
-    const locationRegex = /(?:près de|côté de|depuis|au-dessus de|à côté de|vers|dans les|dans le|en partant de)\s+(.+?)(?=$|[.,;:!?]|\b(avec|et|pour|de)\b)/i;
-    const match = text.match(locationRegex);
+    const reStd = new RegExp(`${SKADI_MODE2_LOC_STD}\\s+(.+?)${SKADI_MODE2_LOC_END}`, 'i');
+    const reDa = new RegExp(`${SKADI_MODE2_LOC_DAPOS}\\s*(.+?)${SKADI_MODE2_LOC_END}`, 'i');
+
+    const match = text.match(reStd) || text.match(reDa);
     if (!match) return null;
 
     const placeName = (match[1] || '').trim().replace(/^["']|["']$/g, '').trim();
@@ -1292,8 +1314,8 @@ const MODE2_KEYWORD_STOP_WORDS = new Set([
 
 function extractUserKeywordsForMode2(message) {
     let s = (message || '').toLowerCase();
-    const locationRegex = /(?:près de|côté de|depuis|au-dessus de|à côté de|vers|dans les|dans le|en partant de)\s+(.+?)(?=$|[.,;:!?]|\b(avec|et|pour|de)\b)/i;
-    s = s.replace(locationRegex, ' ');
+    s = s.replace(new RegExp(`${SKADI_MODE2_LOC_STD}\\s+.+?${SKADI_MODE2_LOC_END}`, 'gi'), ' ');
+    s = s.replace(new RegExp(`${SKADI_MODE2_LOC_DAPOS}\\s*.+?${SKADI_MODE2_LOC_END}`, 'gi'), ' ');
     s = s.replace(/\b\d+(?:[.,]\d+)?\s*(?:km|kilom[eè]tre(?:s)?)\b/gi, ' ');
     s = s.replace(/\b\d+(?:[.,]\d+)?\s*(?:heure(?:s)?|h)\b/gi, ' ');
     s = s.replace(/\b\d+h\d{1,2}\b/gi, ' ');
@@ -1397,10 +1419,18 @@ function getActivityLinkText(url) {
 
 function buildSummitPopupContent(name, altitude, project, status) {
     const statusLabel = status === 'completed' ? 'Accompli' : 'À gravir';
+    const titleHtml = altitude
+        ? `<b>${escapeHtml(name)} (${altitude}m)</b>`
+        : `<b>${escapeHtml(name)}</b>`;
     return `
-        <b>${name} ${altitude ? `(${altitude}m)` : ''}</b><br>
-        <b>Projet :</b> ${project}<br>
-        <b>Statut :</b> ${statusLabel}
+        <div class="summit-popup-header">
+            <span class="summit-popup-title">${titleHtml}</span>
+            <button type="button" class="summit-popup-close" aria-label="Fermer la popup">×</button>
+        </div>
+        <div class="summit-popup-body">
+            <b>Projet :</b> ${escapeHtml(project)}<br>
+            <b>Statut :</b> ${statusLabel}
+        </div>
     `;
 }
 
@@ -2434,8 +2464,10 @@ une distance (ex: "15km")
 une durée (ex: "3 heures" ou "2j" ou "1 jour")
 un dénivelé (ex: "1000m")
 une cotation (ex: "T3")
-une localisation (ex: "près de Lausanne")
+une localisation (ex: "près de Lausanne", "pres de Genève", "proche de Berne", "proche d'Annecy")
 Tu peux aussi demander l'avis de Charles en mentionnant son prénom.
+
+Pour tout réafficher sur la carte : écris « reset », « tous », « toute » ou « toutes ».
 
 Exemple: "randonnée près de Lausanne autour de 15km avec 1000m de dénivelé"`;
 let skadiHelpShown = false;
@@ -2460,7 +2492,8 @@ function detectSkadiMode(message) {
         /\bm\s*d\+\b/i.test(text) ||
         /\b\d+(?:[.,]\d+)?\s*m\b/i.test(text);
     const hasCotation = /\bt\s*[1-6]\b/i.test(text);
-    const hasLocation = /(?:près de|côté de|depuis|au-dessus de|à côté de|vers|dans les|dans le|en partant de)\s+/i.test(text);
+    const hasLocation =
+        new RegExp(`${SKADI_MODE2_LOC_STD}\\s+`, 'i').test(text) || new RegExp(SKADI_MODE2_LOC_DAPOS, 'i').test(text);
     return (hasDistance || hasDuration || hasElevation || hasCotation || hasLocation) ? 'recommendation' : 'filter';
 }
 

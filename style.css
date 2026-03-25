@@ -94,12 +94,31 @@
   flex-wrap: nowrap;
 }
 
+/* Summit popup header: [Title] [×] — one row, × right, no overlap */
+.summit-popup-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.summit-popup-title {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .track-popup-title {
   font-weight: bold;
   white-space: nowrap;
 }
 
+.summit-popup-close,
 .track-popup-close {
+  flex: 0 0 auto;
   margin-left: auto;
   border: none;
   background: transparent;
@@ -110,6 +129,7 @@
   color: #666;
 }
 
+.summit-popup-close:hover,
 .track-popup-close:hover {
   color: #222;
 }

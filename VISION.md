@@ -63,6 +63,8 @@ Skadi is the in-site activity advisor, accessible via a "?" floating button in t
 **Mode 1 Filter:**
 The user types keywords (season, activity type, status, activity name). Skadi updates the map to show all matching activities and replies with a short confirmation.
 
+**Help / reset:** Typing **aide** shows Skadi’s help text, including how to show everything again: chat phrases **reset**, **tous**, **toute**, **toutes** (clears recommendation mode on the map and reapplies an “all activities” filter state), plus a reminder that the Sommets tab filter bar can be set back to **Tous** and **Appliquer les filtres** so the menus match what you see.
+
 Detected keywords:
 - Season: été, hiver, printemps, automne
 - Type: randonnée, ski, trail, alpinisme, vélo
@@ -72,7 +74,7 @@ Detected keywords:
 **Journal keywords (Mode 1):** Words in **bold** in column T (or in linked Markdown under `journal/`) are indexed in a background keyword cache at page load. A single word that is not a season/type/status/name match is treated as a keyword search: all completed activities whose journal keywords match (whole word) are shown. Multi-word phrases can combine filters with keyword tokens (e.g. type + “glacier”) by intersecting the usual filters with keyword matches.
 
 **Mode 2 Recommendation:**
-Triggered when the user mentions at least one of: distance (km), duration (heure/h/jours), elevation (dénivelé/D+), cotation (T1–T6), or a location (près de, côté de, depuis, au-dessus de, vers, dans les, dans le, en partant de).
+Triggered when the user mentions at least one of: distance (km), duration (heure/h/jours), elevation (dénivelé/D+), cotation (T1–T6), or a location phrase such as **près de** / **pres de**, **côté de** / **cote de**, **à côté de** / **a cote de**, **au-dessus de** / **au dessus de**, **proche de**, **proche d'…**, **depuis**, **vers**, **dans les**, **dans le**, **en partant de**.
 
 Skadi scores completed activities and returns the 3 best matches. Scoring uses relative difference for numeric fields, and Haversine distance with a 3x coefficient for location (normalized across the pool used for scoring). Only completed activities are considered.
 
