@@ -155,14 +155,26 @@
   right: 4px !important;
 }
 
+/* Legend FAB + gap to 3D toggle — tweak --skadi-3d-gap (and optionally --skadi-legend-fab-*) to align with #map-3d-toggle-debug on localhost */
+:root {
+  --skadi-legend-fab-left: 12px;
+  --skadi-legend-fab-bottom: 28px;
+  --skadi-legend-fab-size: 42px;
+  --skadi-3d-gap: 8px;
+  /* Same as tab underline (index.html #tabs li a.active) */
+  --skadi-accent: #45818e;
+  --skadi-fab-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+  --skadi-fab-ring-selected: 0 0 0 2px var(--skadi-accent), var(--skadi-fab-shadow);
+}
+
 /* Hidden legend toggle and panel */
 #legend-toggle-btn {
   position: absolute;
-  left: 12px;
-  bottom: 28px;
+  left: var(--skadi-legend-fab-left);
+  bottom: var(--skadi-legend-fab-bottom);
   z-index: 1001;
-  width: 42px;
-  height: 42px;
+  width: var(--skadi-legend-fab-size);
+  height: var(--skadi-legend-fab-size);
   border: none;
   border-radius: 50%;
   background: #333;
@@ -170,7 +182,11 @@
   font-weight: bold;
   font-size: 20px;
   cursor: pointer;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--skadi-fab-shadow);
+}
+
+#legend-toggle-btn[aria-expanded="true"] {
+  box-shadow: var(--skadi-fab-ring-selected);
 }
 
 #legend-toggle-btn:hover {
@@ -183,8 +199,8 @@
 
 #map-legend {
   position: absolute;
-  left: 12px;
-  bottom: 78px;
+  left: var(--skadi-legend-fab-left);
+  bottom: calc(var(--skadi-legend-fab-bottom) + var(--skadi-legend-fab-size) + 8px);
   z-index: 1001;
   width: 230px;
   max-height: 55vh;
@@ -241,11 +257,12 @@
   border-radius: 2px;
 }
 
-/* Map 3D / 2D toggle — Sommets + Bikepacking; top-left to avoid overlap with Skadi (bottom-right) */
-#map-3d-toggle {
+/* Map 3D / 2D toggle — to the right of the legend FAB (not inside the legend panel) */
+#map-3d-toggle,
+#map-3d-toggle-debug {
   position: absolute;
-  top: 12px;
-  left: 12px;
+  left: calc(var(--skadi-legend-fab-left) + var(--skadi-legend-fab-size) + var(--skadi-3d-gap));
+  bottom: var(--skadi-legend-fab-bottom);
   z-index: 1002;
   width: 42px;
   height: 42px;
@@ -257,14 +274,29 @@
   font-weight: bold;
   letter-spacing: 0.02em;
   cursor: pointer;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--skadi-fab-shadow);
 }
 
-#map-3d-toggle.hidden {
+#map-3d-toggle[aria-pressed="true"] {
+  box-shadow: var(--skadi-fab-ring-selected);
+}
+
+#map-3d-toggle.hidden,
+#map-3d-toggle-debug.hidden {
   display: none;
 }
 
 #map-3d-toggle:hover {
+  background: #444;
+}
+
+/* Localhost only: same geometry as #map-3d-toggle; orange ring = no Mapbox action */
+#map-3d-toggle-debug {
+  box-shadow: 0 0 0 2px rgba(255, 153, 0, 0.95), var(--skadi-fab-shadow);
+  cursor: default;
+}
+
+#map-3d-toggle-debug:hover {
   background: #444;
 }
 
@@ -283,7 +315,11 @@
   font-size: 20px;
   font-weight: bold;
   cursor: pointer;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--skadi-fab-shadow);
+}
+
+#skadi-chat-toggle[aria-expanded="true"] {
+  box-shadow: var(--skadi-fab-ring-selected);
 }
 
 #skadi-chat-toggle.hidden {

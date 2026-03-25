@@ -2895,21 +2895,39 @@ function disableSkadiChat3DMode() {
     }
 }
 
-function updateMap3DToggleButton() {
-    const btn = document.getElementById('map-3d-toggle');
-    if (!btn) return;
-    if (isLocalDevHost() || bikeJournalOpen || journalPanelOpen) {
-        btn.classList.add('hidden');
+/** Localhost-only twin of #map-3d-toggle for tuning CSS variables; click does nothing. */
+function updateMap3DToggleDebugButton() {
+    const dbg = document.getElementById('map-3d-toggle-debug');
+    if (!dbg) return;
+    if (!isLocalDevHost()) {
+        dbg.classList.add('hidden');
         return;
     }
-    btn.classList.remove('hidden');
-    if (skadiChat3DEnabled) {
-        btn.textContent = '2D';
-        btn.setAttribute('aria-label', 'Revenir à la carte plate');
-    } else {
-        btn.textContent = '3D';
-        btn.setAttribute('aria-label', 'Afficher la carte en 3D');
+    if (bikeJournalOpen || journalPanelOpen) {
+        dbg.classList.add('hidden');
+        return;
     }
+    dbg.classList.remove('hidden');
+}
+
+function updateMap3DToggleButton() {
+    const btn = document.getElementById('map-3d-toggle');
+    if (btn) {
+        btn.setAttribute('aria-pressed', skadiChat3DEnabled ? 'true' : 'false');
+        if (isLocalDevHost() || bikeJournalOpen || journalPanelOpen) {
+            btn.classList.add('hidden');
+        } else {
+            btn.classList.remove('hidden');
+            if (skadiChat3DEnabled) {
+                btn.textContent = '2D';
+                btn.setAttribute('aria-label', 'Revenir à la carte plate');
+            } else {
+                btn.textContent = '3D';
+                btn.setAttribute('aria-label', 'Afficher la carte en 3D');
+            }
+        }
+    }
+    updateMap3DToggleDebugButton();
 }
 
 function getRecommendationMatches(intent) {
@@ -3413,6 +3431,10 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
 
+    if (isLocalDevHost()) {
+        document.body.classList.add('skadi-local-dev');
+    }
+
     // Set the default tab to summits
     currentTab = 'summits';
     document.querySelector('#tabs a[data-tab="summits"]').classList.add('active');
@@ -3456,6 +3478,14 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 enableSkadiChat3DMode();
             }
+        });
+    }
+
+    const map3dDebugBtn = document.getElementById('map-3d-toggle-debug');
+    if (map3dDebugBtn) {
+        map3dDebugBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
         });
     }
 
