@@ -241,12 +241,12 @@
   border-radius: 2px;
 }
 
-/* Bike tab: 3D / 2D map toggle (same slot as Skadi on Sommets) */
-#bike-map-3d-toggle {
+/* Map 3D / 2D toggle — Sommets + Bikepacking; top-left to avoid overlap with Skadi (bottom-right) */
+#map-3d-toggle {
   position: absolute;
-  right: 12px;
-  bottom: 28px;
-  z-index: 1001;
+  top: 12px;
+  left: 12px;
+  z-index: 1002;
   width: 42px;
   height: 42px;
   border: none;
@@ -260,11 +260,11 @@
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
 }
 
-#bike-map-3d-toggle.hidden {
+#map-3d-toggle.hidden {
   display: none;
 }
 
-#bike-map-3d-toggle:hover {
+#map-3d-toggle:hover {
   background: #444;
 }
 

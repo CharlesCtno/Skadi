@@ -215,6 +215,8 @@ function openJournalPanel(activityName, journalPath) {
     panel.classList.remove('hidden');
     panel.setAttribute('aria-hidden', 'false');
 
+    updateMap3DToggleButton();
+
     // Give CSS transition time, then resize the map canvas.
     setTimeout(() => {
         if (map) map.invalidateSize();
@@ -263,6 +265,7 @@ function closeJournalPanel() {
     document.body.classList.remove('journal-open');
     journalPanelOpen = false;
     clearJournalPanelLayout();
+    updateMap3DToggleButton();
     setTimeout(() => {
         if (map) map.invalidateSize();
     }, 320);
@@ -429,7 +432,7 @@ function openBikeImmersiveJournal(entry) {
     panel.classList.remove('hidden');
     panel.setAttribute('aria-hidden', 'false');
 
-    updateBikeMap3DToggleButton();
+    updateMap3DToggleButton();
 
     window.scrollTo(0, 0);
 
@@ -458,13 +461,13 @@ function closeBikeImmersiveJournal() {
     deselectAllBikeTracks();
     const shouldResume3D = bikeMap3DResumeAfterJournal;
     bikeMap3DResumeAfterJournal = false;
-    updateBikeMap3DToggleButton();
+    updateMap3DToggleButton();
     setTimeout(() => {
         if (map) map.invalidateSize();
         if (currentTab === 'bike' && shouldResume3D && !isLocalDevHost()) {
             enableSkadiChat3DMode();
         }
-        updateBikeMap3DToggleButton();
+        updateMap3DToggleButton();
     }, BIKE_JOURNAL_MAP_RESIZE_MS);
 }
 
@@ -2444,7 +2447,7 @@ document.querySelectorAll('#tabs a').forEach(tab => {
             map.setView([46.2, 7.5], 8); // Default view for summits
         }
 
-        updateBikeMap3DToggleButton();
+        updateMap3DToggleButton();
     });
 });
 
@@ -2806,6 +2809,7 @@ function enableSkadiChat3DMode() {
     } catch (_e) {
         // If camera methods aren't available for some reason, fail silently.
     }
+    updateMap3DToggleButton();
 }
 
 function disableSkadiChat3DMode() {
@@ -2828,6 +2832,7 @@ function disableSkadiChat3DMode() {
         } catch (_e) {
             // ignore
         }
+        updateMap3DToggleButton();
         return;
     }
     try {
@@ -2886,14 +2891,14 @@ function disableSkadiChat3DMode() {
         } catch (_e) {
             // ignore
         }
+        updateMap3DToggleButton();
     }
 }
 
-function updateBikeMap3DToggleButton() {
-    const btn = document.getElementById('bike-map-3d-toggle');
+function updateMap3DToggleButton() {
+    const btn = document.getElementById('map-3d-toggle');
     if (!btn) return;
-    const show = currentTab === 'bike' && !bikeJournalOpen && !isLocalDevHost();
-    if (!show) {
+    if (isLocalDevHost() || bikeJournalOpen || journalPanelOpen) {
         btn.classList.add('hidden');
         return;
     }
@@ -3440,16 +3445,17 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     initBikeJournalControls();
 
-    const bikeMap3dToggleBtn = document.getElementById('bike-map-3d-toggle');
-    if (bikeMap3dToggleBtn) {
-        bikeMap3dToggleBtn.addEventListener('click', function() {
-            if (currentTab !== 'bike' || bikeJournalOpen || isLocalDevHost()) return;
+    const map3dToggleBtn = document.getElementById('map-3d-toggle');
+    if (map3dToggleBtn) {
+        map3dToggleBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (isLocalDevHost() || bikeJournalOpen || journalPanelOpen) return;
             if (skadiChat3DEnabled) {
                 disableSkadiChat3DMode();
             } else {
                 enableSkadiChat3DMode();
             }
-            updateBikeMap3DToggleButton();
         });
     }
 
@@ -3463,6 +3469,6 @@ document.addEventListener('DOMContentLoaded', function() {
     whenMapStyleReady(function () {
         map.setView([46.2, 7.5], 8);
         loadData();
-        updateBikeMap3DToggleButton();
+        updateMap3DToggleButton();
     });
 });
