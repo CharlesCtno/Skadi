@@ -56,7 +56,7 @@ An **English UI toggle** is not planned as a requirement, only a possible long-t
 ## Skadi (chatbot)
 
 - **Mode 1:** Filters by season, type, status, or activity name; single-word **keyword** search uses bold-derived keywords from column T (and `journal/` Markdown); multi-word queries can combine filters with keyword tokens.
-- **Mode 2:** Recommends top 3 completed activities using distance, duration, elevation, cotation (T1–T6), and/or location; optional **keyword pre-filter** from the same journal keyword cache (built once per session in the background).
+- **Mode 2:** Recommends top 3 completed activities using distance, duration, elevation, cotation (T1–T6), and/or location; optional **keyword pre-filter** from the same journal keyword cache (built once per session in the background). When Mode 2 triggers, Skadi also enables a 3D map view (terrain + building extrusions) with mouse rotation (pitch clamped); touch rotation stays disabled.
 - See `VISION.md` for behavior details and roadmap.
 
 ## Key Files
@@ -100,6 +100,7 @@ An **English UI toggle** is not planned as a requirement, only a possible long-t
 | ✅ | Trail Running activity type added |
 | ✅ | Full UI in French |
 | ✅ | Skadi chatbot: Mode 1 (filter) + Mode 2 (recommendation + location + cotation) |
+| ✅ | Skadi Mode 2: 3D map (terrain + buildings) + mouse rotation |
 | ✅ | Contact Charles flow via Google Form |
 | ✅ | Journal column T: inline popup text + `journal/` Markdown récit (summits) |
 | ✅ | **Journal keywords** (bold in T / Markdown) + Skadi Mode 1 & 2 |

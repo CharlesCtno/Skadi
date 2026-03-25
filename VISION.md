@@ -80,6 +80,42 @@ Skadi scores completed activities and returns the 3 best matches. Scoring uses r
 
 The 3 matching activities are displayed on the map, all others are hidden. Skadi presents them in chat with key stats and approximate distance from location if applicable.
 
+**3D map mode (implemented):** When Mode 2 triggers, Skadi enables a true 3D Mapbox view by turning on terrain (DEM) and 3D building extrusions, tilts the camera to about **20°**, allows **mouse rotation** (drag), clamps pitch to a safe **0°..70°** range, and keeps **touch rotation disabled**. When the next chat request is processed (Mode 1/filter), Skadi resets back to 2D.
+
+### Adventure mode (bikepacking live) - planned
+Bikepacking is adventure-driven. “Adventure mode” lets you trigger a live trip presence, then publish GPS points while riding. The public site only reads this data; only you can publish it (no public web-login).
+
+Key rules
+- One active trip at a time.
+- `tripId` format: `YYYY-MM-DD_name` (chosen by you).
+
+Phases
+- Phase 1: Trip banner + live polyline (GPS only)
+- Phase 2: Add photos and short text later (after the ride), associated to the recorded points
+
+Activation and live flow
+1. At the beginning of a trip, you activate Adventure mode.
+2. While you ride, you trigger “Follow Live” when you start pedaling.
+3. GPS publishing happens automatically every 1–2 hours (based on your phone/Garmin readings).
+4. Each published location updates the website’s latest marker and the polyline of the trip points.
+5. When connectivity is poor/absent, publishing is queued offline and synced to GitHub once you have signal.
+
+Website behavior (bikepacking tab)
+- When `live/activeTrip.json` indicates the trip is active, show a banner indicating the trip.
+- Draw the trip polyline on the bikepacking map using `live/trips/<tripId>/points.json`.
+- Show a “latest” dot marker at the newest point.
+- “Follow Live” behaves like: when on, keep the view centered/fit to include the latest dot as new points arrive.
+
+Later enrichment (photos and text)
+- After the trip (or later when you have signal), you can attach photos and a short note.
+- Photos and text are stored as additional JSON and/or metadata files under `live/trips/<tripId>/` and referenced from the displayed points.
+- Updates should be idempotent: re-pushing notes/photos should not break already-rendered points.
+
+Authentication / “only you can trigger it” (approach A)
+- No login/auth UI is required on the public site.
+- Posting is done by a personal phone script that uses a GitHub auth token.
+- The phone script is the only writer; the website reads the public JSON files from the repo/Pages.
+
 ### Contact Charles flow
 After a Mode 2 recommendation, if the user mentions "charles" (case-insensitive) in any message, Skadi asks for their name and silently submits a Google Form with: user name, original request, Skadi's suggestions, and date. Skadi confirms: "Parfait ! Charles reviendra vers toi dès que possible."
 
@@ -155,5 +191,7 @@ Bold text in journals already feeds Skadi; visual tags on story pages could come
 | ✅ | Column T journal: inline text + `journal/` Markdown, popup bold rendering, slide-in récit |
 | ✅ | **Journal keywords:** bold extraction, session cache, Mode 1 + Mode 2 Skadi integration |
 | ✅ | **Immersive bike journal:** map band + Markdown chapter, sticky header, étape navigation, track highlight |
+| ✅ | Skadi Mode 2: true 3D map + mouse rotation |
+| 🔜 (planned) | Adventure mode: live bikepacking presence + GPS polyline (GPS first, photos/text later) |
 | 🔜 (optional) | English UI toggle not required; long-term only if needed |
 
