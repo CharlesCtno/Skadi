@@ -9,7 +9,7 @@
   <link rel="icon" type="image/x-icon" href="favicon.ico">
 
   <!-- CSS and Fonts -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.8.0/mapbox-gl.css" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
   <!-- PhotoSwipe 5 (self-hosted to avoid CORB on live server) -->
   <link rel="stylesheet" href="vendor/photoswipe/photoswipe.min.css" />
@@ -219,8 +219,8 @@
       color: white;
     }
 
-    /* Hide Leaflet zoom controls */
-    .leaflet-control-zoom {
+    /* Hide Mapbox zoom group if you add NavigationControl later */
+    .mapboxgl-ctrl-group {
       display: none !important;
     }
 
@@ -332,7 +332,7 @@
     4. Copy token → replace YOUR_MAPBOX_TOKEN_HERE in script.js
   -->
   <!-- JavaScript -->
-  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.8.0/mapbox-gl.js"></script>
   <script src="vendor/photoswipe/photoswipe.umd.min.js"></script>
   <script src="vendor/photoswipe/photoswipe-lightbox.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>

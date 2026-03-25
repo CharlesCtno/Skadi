@@ -2,7 +2,12 @@
 let map;
 let markers = [];
 let tracks = [];
-let loadedGeoJSONFiles = {};
+// Cache parsed GeoJSON so we don't download the same file multiple times,
+// but we still create a dedicated Mapbox source/layer per CSV row.
+let geojsonDataPromiseCache = {};
+// Track additions must happen after the Mapbox style is loaded.
+let pendingTrackAdds = [];
+let mapLoaded = false;
 let gpxNames = [];
 let gpxNameSet = new Set();
 let gpxNameToMarker = {};
@@ -25,7 +30,27 @@ let bikeEtapesRegistry = [];
 let bikeJournalOpen = false;
 let bikeJournalCurrentGpxName = null;
 
+/** Monotonic id for Mapbox GL source/layer ids (must stay valid in style JSON). */
+let skadiLayerSerial = 0;
+
+/** Summit triangles: z-index base; weight added so earlier CSV rows stay on top (matches Mapbox vector + Leaflet overlap). */
+const SKADI_SUMMIT_MARKER_Z_BASE = 420;
+
 const MAPBOX_ACCESS_TOKEN = 'YOUR_MAPBOX_TOKEN_HERE';
+
+/** Minimal raster style for local dev (no Mapbox vector tiles). */
+const SKADI_OSM_RASTER_STYLE = {
+    version: 8,
+    sources: {
+        osm: {
+            type: 'raster',
+            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }
+    },
+    layers: [{ id: 'osm', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 19 }]
+};
 
 function isLocalDevHost() {
     const host = (window.location.hostname || '').toLowerCase();
@@ -167,7 +192,7 @@ function openJournalPanel(activityName, journalPath) {
     panel.classList.remove('hidden');
     panel.setAttribute('aria-hidden', 'false');
 
-    // Give CSS transition time, then resize Leaflet canvas.
+    // Give CSS transition time, then resize the map canvas.
     setTimeout(() => {
         if (map) map.invalidateSize();
     }, 320);
@@ -313,36 +338,15 @@ const BIKE_TRACK_JOURNAL_STYLE = {
 };
 
 function applyBikeTrackJournalStyle(track, selected) {
-    if (!track || track.dataType !== 'bike') return;
-    const lineColor = track.lineColor || '#808080';
-    const vis = selected
-        ? {
-              color: lineColor,
-              weight: BIKE_TRACK_JOURNAL_STYLE.visibleWeightSelected,
-              opacity: BIKE_TRACK_JOURNAL_STYLE.visibleOpacitySelected
-          }
-        : {
-              color: lineColor,
-              weight: BIKE_TRACK_JOURNAL_STYLE.visibleWeightUnselected,
-              opacity: BIKE_TRACK_JOURNAL_STYLE.visibleOpacityUnselected
-          };
-    const hit = selected
-        ? {
-              color: 'transparent',
-              weight: BIKE_TRACK_JOURNAL_STYLE.hitWeight,
-              opacity: BIKE_TRACK_JOURNAL_STYLE.hitOpacitySelected
-          }
-        : {
-              color: 'transparent',
-              weight: BIKE_TRACK_JOURNAL_STYLE.hitWeight,
-              opacity: BIKE_TRACK_JOURNAL_STYLE.hitOpacityUnselected
-          };
-    track.layer.eachLayer(function(layer) {
-        layer.setStyle(vis);
-    });
-    track.invisibleLayer.eachLayer(function(layer) {
-        layer.setStyle(hit);
-    });
+    if (!track || track.dataType !== 'bike' || !map) return;
+    if (!track.lineLayerId || !map.getLayer(track.lineLayerId)) return;
+    const wVis = selected
+        ? BIKE_TRACK_JOURNAL_STYLE.visibleWeightSelected
+        : BIKE_TRACK_JOURNAL_STYLE.visibleWeightUnselected;
+    map.setPaintProperty(track.lineLayerId, 'line-width', wVis);
+    if (map.getLayer(track.hitLayerId)) {
+        map.setPaintProperty(track.hitLayerId, 'line-width', BIKE_TRACK_JOURNAL_STYLE.hitWeight);
+    }
 }
 
 /** Reset all bike tracks, then highlight every track matching gpxName (same file can appear as multiple layer groups). */
@@ -353,8 +357,7 @@ function setBikeJournalActiveTrackByGpxName(gpxName) {
         if (track.dataType !== 'bike' || track.gpxName !== gpxName) return;
         applyBikeTrackJournalStyle(track, true);
         try {
-            track.invisibleLayer.bringToFront();
-            track.layer.bringToFront();
+            track.adapter.bringToFront();
         } catch (e) {
             /* ignore */
         }
@@ -364,18 +367,11 @@ function setBikeJournalActiveTrackByGpxName(gpxName) {
 function fitBikeJournalMapToActiveTrack(gpxName) {
     if (!map || !gpxName) return;
     const track = tracks.find((t) => t.dataType === 'bike' && t.gpxName === gpxName);
-    if (!track || !track.layer) return;
+    if (!track) return;
     map.invalidateSize();
     setTimeout(() => {
         map.invalidateSize();
-        let bounds = track.bounds;
-        if (!bounds || (typeof bounds.isValid === 'function' && !bounds.isValid())) {
-            try {
-                bounds = track.layer.getBounds();
-            } catch (e) {
-                bounds = null;
-            }
-        }
+        const bounds = track.bounds;
         if (bounds && typeof bounds.isValid === 'function' && bounds.isValid()) {
             map.fitBounds(bounds, { padding: [20, 20] });
         }
@@ -465,74 +461,270 @@ function initBikeJournalControls() {
     });
 }
 
-// Initialize map
-function initMap() {
-  map = L.map('map', {
-    zoomControl: false,
-    // Canvas paths scale better with many GeoJSON tracks than default SVG.
-    preferCanvas: true,
-    // Faster tile swaps (no fade); feels closer to “native” map apps.
-    fadeAnimation: false
-  }).setView([46.2, 7.5], 8);
-  const tileCommon = {
-    // Load tiles while panning (not only after release) — smoother “refresh” when moving.
-    updateWhenIdle: false,
-    keepBuffer: 3
-  };
-  if (isLocalDevHost()) {
-    L.tileLayer(
-      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      Object.assign(
-        {
-          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        },
-        tileCommon
-      )
-    ).addTo(map);
-    return;
-  }
-
-  // HiDPI: Mapbox 256 + @2x → 512px images; pair with tileSize 512 / zoomOffset -1 (Mapbox + Leaflet recipe).
-  // Standard DPR: explicit /tiles/512/… (old URL omitted tile size and looked soft when scaled).
-  const mapboxRasterUrl =
-    (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1) >= 2
-      ? 'https://api.mapbox.com/styles/v1/{id}/tiles/256/{z}/{x}/{y}@2x?access_token={accessToken}'
-      : 'https://api.mapbox.com/styles/v1/{id}/tiles/512/{z}/{x}/{y}?access_token={accessToken}';
-  L.tileLayer(
-    mapboxRasterUrl,
-    Object.assign(
-      {
-        attribution:
-          '© <a href="https://www.mapbox.com/">Mapbox</a> © <a href="https://www.openstreetmap.org/">OpenStreetMap</a>',
-        tileSize: 512,
-        zoomOffset: -1,
-        id: 'mapbox/outdoors-v12',
-        accessToken: MAPBOX_ACCESS_TOKEN
-      },
-      tileCommon
-    )
-  ).addTo(map);
-}
-
-// Function to create a colored triangle icon with outline
-function createTriangleIcon(color, isCompleted) {
+function getTriangleIconHtml(color, isCompleted) {
     const outlineWidth = '0.6';
     const trianglePath = 'M10 2 L2 18 L18 18 Z';
     const snowCapSvg = isCompleted
         ? '<path d="M10 2.35 L6.5 9 L13.5 9 Z" fill="white" opacity="0.95"/>'
         : '';
-    return L.divIcon({
-        html: `
+    return `
             <svg width="24" height="24" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
                 <path d="${trianglePath}" fill="${color}"/>
                 ${snowCapSvg}
                 <path d="${trianglePath}" fill="none" stroke="black" stroke-width="${outlineWidth}"/>
             </svg>
-        `,
-        className: 'summit-icon',
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
+        `;
+}
+
+function computeBoundsFromGeoJSONFeatureCollection(data) {
+    let minLng = Infinity;
+    let minLat = Infinity;
+    let maxLng = -Infinity;
+    let maxLat = -Infinity;
+    function extendCoords(coords) {
+        if (!coords || coords.length === 0) return;
+        if (typeof coords[0] === 'number') {
+            const lng = coords[0];
+            const lat = coords[1];
+            minLng = Math.min(minLng, lng);
+            maxLng = Math.max(maxLng, lng);
+            minLat = Math.min(minLat, lat);
+            maxLat = Math.max(maxLat, lat);
+            return;
+        }
+        for (let i = 0; i < coords.length; i++) extendCoords(coords[i]);
+    }
+    const features = (data && data.features) || [];
+    for (let f = 0; f < features.length; f++) {
+        const g = features[f].geometry;
+        if (!g) continue;
+        if (g.type === 'LineString') extendCoords(g.coordinates);
+        else if (g.type === 'MultiLineString') extendCoords(g.coordinates);
+    }
+    return {
+        isValid() {
+            return Number.isFinite(minLng) && minLng < maxLng && minLat < maxLat;
+        },
+        getSouthWest() {
+            return { lng: minLng, lat: minLat };
+        },
+        getNorthEast() {
+            return { lng: maxLng, lat: maxLat };
+        }
+    };
+}
+
+function patchSkadiMapboxMap(mbMap) {
+    mbMap._skadiLinePopup = null;
+
+    const nativeAddLayer = mbMap.addLayer.bind(mbMap);
+    const nativeRemoveLayer = mbMap.removeLayer.bind(mbMap);
+
+    mbMap.invalidateSize = function () {
+        this.resize();
+    };
+
+    mbMap.setView = function (centerLatLng, z) {
+        this.jumpTo({ center: [centerLatLng[1], centerLatLng[0]], zoom: z });
+    };
+
+    mbMap.closePopup = function () {
+        if (this._skadiLinePopup) {
+            this._skadiLinePopup.remove();
+            this._skadiLinePopup = null;
+        }
+        if (typeof markers !== 'undefined' && Array.isArray(markers)) {
+            markers.forEach((ms) => {
+                if (ms.layer && ms.layer._mglMarker) {
+                    const pop = ms.layer._mglMarker.getPopup();
+                    if (pop && pop.isOpen()) pop.remove();
+                }
+            });
+        }
+    };
+
+    const origFitBounds = mbMap.fitBounds.bind(mbMap);
+    mbMap.fitBounds = function (boundsInput, options) {
+        if (!boundsInput || typeof boundsInput.getSouthWest !== 'function') return;
+        const paddingOpt = options && options.padding;
+        let pad = 20;
+        if (Array.isArray(paddingOpt)) pad = paddingOpt[0];
+        else if (typeof paddingOpt === 'number') pad = paddingOpt;
+        const sw = boundsInput.getSouthWest();
+        const ne = boundsInput.getNorthEast();
+        const bbox = new mapboxgl.LngLatBounds([sw.lng, sw.lat], [ne.lng, ne.lat]);
+        origFitBounds(bbox, { padding: pad, duration: 0, animate: false });
+    };
+
+    mbMap.addLayer = function (arg) {
+        if (arg && typeof arg._skadiAddTo === 'function') {
+            arg._skadiAddTo(this);
+            return;
+        }
+        nativeAddLayer(arg);
+    };
+    mbMap.removeLayer = function (arg) {
+        if (arg && typeof arg._skadiRemoveFrom === 'function') {
+            arg._skadiRemoveFrom(this);
+            return;
+        }
+        nativeRemoveLayer(arg);
+    };
+    mbMap.hasLayer = function (arg) {
+        if (arg && typeof arg._skadiAddTo === 'function') {
+            return !!arg._skadiOnMap;
+        }
+        return !!this.getLayer(arg);
+    };
+}
+
+function createSummitMapboxMarker(lat, lng, color, isCompleted, popupHtml) {
+    const el = document.createElement('div');
+    el.className = 'summit-icon';
+    el.innerHTML = getTriangleIconHtml(color, isCompleted);
+    const popup = new mapboxgl.Popup({
+        closeButton: true,
+        offset: 18,
+        maxWidth: 'min(90vw, 420px)'
+    }).setHTML(popupHtml);
+    const m = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([lng, lat]).setPopup(popup);
+
+    return {
+        _skadiOnMap: false,
+        _mglMarker: m,
+        _skadiAddTo(mbMap) {
+            m.addTo(mbMap);
+            const root = m.getElement();
+            if (root && typeof this._skadiSummitZWeight === 'number') {
+                root.style.zIndex = String(SKADI_SUMMIT_MARKER_Z_BASE + this._skadiSummitZWeight);
+            }
+            this._skadiOnMap = true;
+        },
+        _skadiRemoveFrom() {
+            m.remove();
+            this._skadiOnMap = false;
+        },
+        setIcon(divIconLike) {
+            const html = divIconLike && divIconLike.html ? divIconLike.html : '';
+            el.innerHTML = html;
+        },
+        setPopupContent(html) {
+            m.getPopup().setHTML(html);
+        }
+    };
+}
+
+function buildSkadiTrackMapAdapter(track) {
+    return {
+        _skadiOnMap: false,
+        bringToFront() {
+            if (!map || !this._skadiOnMap) return;
+            try {
+                if (map.getLayer(track.hitLayerId)) map.moveLayer(track.hitLayerId);
+                if (map.getLayer(track.lineLayerId)) map.moveLayer(track.lineLayerId);
+            } catch (_e) {
+                /* ignore */
+            }
+        },
+        eachLayer(fn) {
+            fn({
+                setStyle: (s) => {
+                    if (s && s.weight != null && map && map.getLayer(track.lineLayerId)) {
+                        map.setPaintProperty(track.lineLayerId, 'line-width', s.weight);
+                    }
+                },
+                getPopup: () => ({ isOpen: () => false }),
+                openPopup: () => {}
+            });
+        },
+        getBounds() {
+            return track.bounds;
+        },
+        _skadiAddTo(mbMap) {
+            if (this._skadiOnMap) return;
+            if (!mbMap.getSource(track.sourceId)) {
+                mbMap.addSource(track.sourceId, { type: 'geojson', data: track.geojsonData });
+            }
+            if (!mbMap.getLayer(track.lineLayerId)) {
+                mbMap.addLayer({
+                    id: track.lineLayerId,
+                    type: 'line',
+                    source: track.sourceId,
+                    layout: { 'line-join': 'round', 'line-cap': 'round' },
+                    paint: {
+                        'line-color': track.lineColor || '#3388ff',
+                        'line-width': 3,
+                        'line-opacity': 1
+                    }
+                });
+            }
+            if (!mbMap.getLayer(track.hitLayerId)) {
+                mbMap.addLayer({
+                    id: track.hitLayerId,
+                    type: 'line',
+                    source: track.sourceId,
+                    layout: { 'line-join': 'round', 'line-cap': 'round' },
+                    paint: {
+                        'line-color': '#000000',
+                        'line-width': 15,
+                        'line-opacity': 0.01
+                    }
+                });
+            }
+            mbMap.on('click', track.hitLayerId, track._onHitClick);
+            this._skadiOnMap = true;
+        },
+        _skadiRemoveFrom(mbMap) {
+            if (!this._skadiOnMap) return;
+            mbMap.off('click', track.hitLayerId, track._onHitClick);
+            if (mbMap.getLayer(track.hitLayerId)) mbMap.removeLayer(track.hitLayerId);
+            if (mbMap.getLayer(track.lineLayerId)) mbMap.removeLayer(track.lineLayerId);
+            if (mbMap.getSource(track.sourceId)) mbMap.removeSource(track.sourceId);
+            this._skadiOnMap = false;
+        }
+    };
+}
+
+// Initialize map (Mapbox GL JS — vector outdoors on prod; OSM raster style on localhost)
+function initMap() {
+    if (typeof mapboxgl === 'undefined') {
+        console.error('mapbox-gl failed to load');
+        return;
+    }
+    mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN || '';
+    const style = isLocalDevHost() ? SKADI_OSM_RASTER_STYLE : 'mapbox://styles/mapbox/outdoors-v12';
+    map = new mapboxgl.Map({
+        container: 'map',
+        style,
+        center: [7.5, 46.2],
+        zoom: 8,
+        renderWorldCopies: false,
+        attributionControl: true
     });
+    map.dragRotate.disable();
+    map.touchZoomRotate.disableRotation();
+    patchSkadiMapboxMap(map);
+
+    // Ensure all addSource/addLayer calls happen after the Mapbox style fully loads.
+    mapLoaded = false;
+    pendingTrackAdds = [];
+    map.once('load', function () {
+        mapLoaded = true;
+        const q = pendingTrackAdds.slice();
+        pendingTrackAdds = [];
+        q.forEach((fn) => {
+            try {
+                fn();
+            } catch (e) {
+                console.error('[Skadi] queued track addition failed:', e);
+            }
+        });
+    });
+}
+
+// Leaflet-compatible shape: `{ html }` for legend + marker.setIcon
+function createTriangleIcon(color, isCompleted) {
+    return { html: getTriangleIconHtml(color, isCompleted) };
 }
 
 function parseDurationToHours(duration) {
@@ -1205,7 +1397,16 @@ function buildTrackPopupContent(gpxName, season, type, grade, distance, duration
     const journalTextBlock = journal.kind === 'text'
         ? `<p class="popup-journal-text">${formatPlainJournalTextForPopupHtml(journal.value)}</p>`
         : '';
-    let html = `<b>${gpxName}</b>${photoBlock}${journalButtonBlock}<br><b>Saison :</b> ${season}`;
+    // Track popup header: [Title] [📷] [📖] [×] (all in one flex row).
+    let html = `
+        <div class="track-popup-header">
+            <span class="track-popup-title"><b>${gpxName}</b></span>
+            ${photoBlock}
+            ${journalButtonBlock}
+            <button type="button" class="track-popup-close" aria-label="Fermer la popup">×</button>
+        </div>
+        <div class="track-popup-body">
+            <b>Saison :</b> ${season}`;
     if (dataType !== 'bike') html += `<br><b>Type :</b> ${type}`;
     if (grade) html += `<br><b>Cotation :</b> ${grade}`;
     if (distance) html += `<br><b>Distance :</b> ${distance} km`;
@@ -1219,6 +1420,7 @@ function buildTrackPopupContent(gpxName, season, type, grade, distance, duration
             html += `<br><a class="popup-activity-link" href="${href.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer">${linkText}</a>`;
         }
     }
+    html += `</div>`;
     return html;
 }
 
@@ -1257,8 +1459,8 @@ function buildLegendActivityRowsHtml() {
 function renderLegendContent() {
     const legendPanel = document.getElementById('map-legend');
     if (!legendPanel) return;
-    const completedIconHtml = createTriangleIcon(defaultColor, true).options.html;
-    const todoIconHtml = createTriangleIcon(defaultColor, false).options.html;
+    const completedIconHtml = createTriangleIcon(defaultColor, true).html;
+    const todoIconHtml = createTriangleIcon(defaultColor, false).html;
     legendPanel.innerHTML = `
         <div class="legend-section">
             <div class="legend-title">Sommets</div>
@@ -1299,6 +1501,71 @@ function setLegendEnabled(enabled) {
     }
 }
 
+/**
+ * Same visibility as applyFilters() for track layers (recommendations / keyword filters are separate).
+ * Keeps loadGeoJSON in sync when filters UI or Skadi changes latestFilterState.
+ */
+function trackAttachMatchesLatestFilters(type, season, gpxName) {
+    const st = latestFilterState;
+    const nameFilterLower = (st.name || '').trim().toLowerCase();
+    const typeMatch = st.activityType === 'all' || normalizeActivityTypeValue(type) === normalizeActivityTypeValue(st.activityType);
+    const statusMatch = st.status === 'all' || 'completed' === st.status;
+    const seasonMatch = st.season === 'all' || normalizeSeasonValue(season) === normalizeSeasonValue(st.season);
+    const nameMatch = !nameFilterLower || (gpxName || '').toLowerCase().includes(nameFilterLower);
+    return typeMatch && statusMatch && seasonMatch && nameMatch;
+}
+
+/** If the style is already loaded before 'load' is subscribed, rAF picks it up; avoids stuck attachTrack. */
+function scheduleAttachTrackWhenStyleReady(attachTrack) {
+    if (!map) {
+        attachTrack();
+        return;
+    }
+    if (typeof map.isStyleLoaded === 'function' && map.isStyleLoaded()) {
+        attachTrack();
+        return;
+    }
+    let ran = false;
+    const onceRun = () => {
+        if (ran || !map || typeof map.isStyleLoaded !== 'function' || !map.isStyleLoaded()) return;
+        ran = true;
+        map.off('load', onceRun);
+        attachTrack();
+    };
+    map.on('load', onceRun);
+    requestAnimationFrame(onceRun);
+}
+
+/**
+ * Summit markers: higher z-index for more southerly peaks (smaller latitude in the northern hemisphere),
+ * so when chains run north→south on the map, each new summit draws above the one to the north.
+ */
+function applySummitMarkerPaintOrderWeights() {
+    if (currentTab !== 'summits') return;
+    const summitMarkers = markers.filter((m) => m.dataType === 'summits');
+    const withPos = summitMarkers
+        .map((markerState) => {
+            const mgl = markerState.layer && markerState.layer._mglMarker;
+            const ll = mgl && mgl.getLngLat();
+            const lat = ll ? ll.lat : 0;
+            const lng = ll ? ll.lng : 0;
+            return { markerState, lat, lng };
+        })
+        .sort((a, b) => {
+            if (a.lat !== b.lat) return a.lat - b.lat; // south (lower lat) first
+            if (a.lng !== b.lng) return a.lng - b.lng;
+            return String(a.markerState.name || '').localeCompare(String(b.markerState.name || ''));
+        });
+    const n = withPos.length;
+    withPos.forEach((row, i) => {
+        const w = n - 1 - i; // southernmost gets largest weight → on top
+        const layer = row.markerState.layer;
+        layer._skadiSummitZWeight = w;
+        const root = layer._mglMarker && layer._mglMarker.getElement();
+        if (root) root.style.zIndex = String(SKADI_SUMMIT_MARKER_Z_BASE + w);
+    });
+}
+
 // Fetch GeoJSON with retries on transient CDN errors (common on GitHub Pages for large files).
 function fetchGeoJsonWithRetry(url, maxAttempts) {
     const attempts = Math.max(1, maxAttempts || 3);
@@ -1318,13 +1585,39 @@ function fetchGeoJsonWithRetry(url, maxAttempts) {
 
 // Function to load GeoJSON files dynamically
 /** @param bikeImmersiveMeta {object|null} When set (bike + journal/ path), track opens immersive view on click instead of popup. */
-function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, elevationGain, gpxName, dataType, activityUrl, photoUrlsColumnS, journalColumnT, bikeImmersiveMeta) {
+function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, elevationGain, gpxName, dataType, activityUrl, photoUrlsColumnS, journalColumnT, bikeImmersiveMeta, rowIndex) {
     const dataPath = dataType === 'bike' ? 'data/bike/processed/' : 'data/processed/';
     const gpxBaseName = normalizeGpxBaseName(gpxFile);
     if (!gpxBaseName) return;
 
-    if (loadedGeoJSONFiles[dataType + gpxBaseName]) {
-        return; // Skip if the file has already been loaded
+    // Mapbox requires globally-unique ids for sources/layers.
+    // Build deterministic ids from tab + rowIndex + geojson basename.
+    const safePart = (v) =>
+        String(v || '')
+            .replace(/[^a-zA-Z0-9_-]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+    const safeDataType = safePart(dataType) || 'x';
+    const safeRowIndex = safePart(rowIndex) || '0';
+    const safeGpxBaseName = safePart(gpxBaseName) || 'x';
+
+    const sourceId = `track-source-${safeDataType}-${safeRowIndex}-${safeGpxBaseName}`;
+    const lineLayerId = `track-layer-${safeDataType}-${safeRowIndex}-${safeGpxBaseName}`;
+    const hitLayerId = `track-hit-${safeDataType}-${safeRowIndex}-${safeGpxBaseName}`;
+
+    const cacheKey = `${dataType}:${gpxBaseName}`;
+    if (!geojsonDataPromiseCache[cacheKey]) {
+        geojsonDataPromiseCache[cacheKey] = fetchGeoJsonWithRetry(`${dataPath}${gpxBaseName}.geojson`, 3)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Failed to load GeoJSON: ${response.status} ${response.statusText}`);
+                }
+                return response.json();
+            })
+            .catch((err) => {
+                // If the fetch failed, allow future rows to retry.
+                delete geojsonDataPromiseCache[cacheKey];
+                throw err;
+            });
     }
 
     const popupContent = buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType, activityUrl, photoUrlsColumnS || '', journalColumnT || '');
@@ -1335,98 +1628,101 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
         ? { className: 'journal-text-popup', minWidth: 520, maxWidth: 2000 }
         : undefined;
 
-    fetchGeoJsonWithRetry(`${dataPath}${gpxBaseName}.geojson`, 3)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`Failed to load GeoJSON: ${response.status} ${response.statusText}`);
-            }
-            return response.json();
-        })
+    geojsonDataPromiseCache[cacheKey]
         .then(data => {
-            // Original track layer
-            const track = L.geoJSON(data, {
-                style: { color: color, weight: 3 },
-                onEachFeature: function(feature, layer) {
-                    if (!opensBikeImmersive) {
-                        layer.bindPopup(popupContent, popupOptions);
-                    }
-                    layer.on('click', function() {
-                        track.bringToFront();
-                        if (opensBikeImmersive) {
-                            const entry = bikeEtapesRegistry.find((e) => e.gpxName === gpxName);
-                            if (entry) openBikeImmersiveJournal(entry);
-                        } else {
-                            layer.setStyle({ weight: 6 });
-                        }
-                    });
-                    layer.on('popupclose', function() {
-                        if (!opensBikeImmersive) {
-                            layer.setStyle({ weight: 3 });
-                        }
-                    });
-                }
-            }).addTo(map);
-
-            // Invisible layer for better clickability
-            const invisibleTrack = L.geoJSON(data, {
-                style: { color: 'transparent', weight: 15, opacity: 0 },
-                interactive: true,
-                onEachFeature: function(feature, layer) {
-                    if (!opensBikeImmersive) {
-                        layer.bindPopup(popupContent, popupOptions);
-                    }
-                    layer.on('click', function() {
-                        track.bringToFront();
-                        if (opensBikeImmersive) {
-                            const entry = bikeEtapesRegistry.find((e) => e.gpxName === gpxName);
-                            if (entry) openBikeImmersiveJournal(entry);
-                        } else {
-                            track.eachLayer(function(trackLayer) {
-                                trackLayer.setStyle({ weight: 6 });
-                            });
-                        }
-                    });
-                    layer.on('popupclose', function() {
-                        if (!opensBikeImmersive) {
-                            track.eachLayer(function(trackLayer) {
-                                trackLayer.setStyle({ weight: 3 });
-                            });
-                        }
-                    });
-                }
-            }).addTo(map);
-
-            tracks.push({
-                layer: track,
-                invisibleLayer: invisibleTrack,
+            const attachTrack = () => {
+            const bounds = computeBoundsFromGeoJSONFeatureCollection(data);
+            const track = {
+                sourceId,
+                lineLayerId,
+                hitLayerId,
+                geojsonData: data,
+                lineColor: color,
+                bounds,
                 type: type,
                 status: 'completed',
                 season: season,
                 gpxName: gpxName,
-                lineColor: color,
                 coordinates: data.features[0].geometry.coordinates,
-                bounds: track.getBounds(),
-                dataType: dataType
-            });
+                dataType: dataType,
+                popupContent,
+                popupOptions,
+                opensBikeImmersive,
+                _onHitClick: null
+            };
 
-            if (activeRecommendationKeys && activeRecommendationKeys.size > 0) {
-                if (!activeRecommendationKeys.has(gpxName)) {
-                    map.removeLayer(track);
-                    map.removeLayer(invisibleTrack);
+            console.log(`[track] attempting: ${sourceId}`);
+            track._onHitClick = function (e) {
+                if (!map) return;
+                map.closePopup();
+                track.adapter.bringToFront();
+                if (track.opensBikeImmersive) {
+                    const entry = bikeEtapesRegistry.find((en) => en.gpxName === gpxName);
+                    if (entry) openBikeImmersiveJournal(entry);
+                    return;
                 }
-            } else {
-                const nameFilterLower = (latestFilterState.name || '').trim().toLowerCase();
-                const typeMatch = latestFilterState.activityType === 'all' || normalizeActivityTypeValue(type) === normalizeActivityTypeValue(latestFilterState.activityType);
-                const statusMatch = latestFilterState.status === 'all' || 'completed' === latestFilterState.status;
-                const seasonMatch = latestFilterState.season === 'all' || season === latestFilterState.season;
-                const nameMatch = !nameFilterLower || (gpxName || '').toLowerCase().includes(nameFilterLower);
-                if (!(typeMatch && statusMatch && seasonMatch && nameMatch)) {
-                    map.removeLayer(track);
-                    map.removeLayer(invisibleTrack);
+                if (map.getLayer(track.lineLayerId)) {
+                    map.setPaintProperty(track.lineLayerId, 'line-width', 6);
                 }
+                const maxW =
+                    track.popupOptions && track.popupOptions.maxWidth != null
+                        ? `${track.popupOptions.maxWidth}px`
+                        : '450px';
+                const p = new mapboxgl.Popup({
+                    closeButton: false,
+                    offset: 12,
+                    maxWidth: maxW,
+                    className: (function() {
+                        const cls = (track.popupOptions && track.popupOptions.className) ? track.popupOptions.className : '';
+                        return ['skadi-track-popup', cls].filter(Boolean).join(' ');
+                    })()
+                })
+                    .setLngLat(e.lngLat)
+                    .setHTML(track.popupContent);
+                p.on('open', function () {
+                    const el = p.getElement && p.getElement();
+                    const closeBtn = el ? el.querySelector('.track-popup-close') : null;
+                    if (!closeBtn) return;
+                    closeBtn.addEventListener('click', function (ev) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        p.remove();
+                    }, { once: true });
+                });
+                p.on('close', () => {
+                    if (map && map.getLayer(track.lineLayerId)) {
+                        map.setPaintProperty(track.lineLayerId, 'line-width', 3);
+                    }
+                    if (map && map._skadiLinePopup === p) map._skadiLinePopup = null;
+                });
+                p.addTo(map);
+                map._skadiLinePopup = p;
+            };
+            try {
+                track.adapter = buildSkadiTrackMapAdapter(track);
+                track.layer = track.adapter;
+                track.invisibleLayer = track.adapter;
+                track.adapter._skadiAddTo(map);
+
+                console.log(`[track] added: ${lineLayerId}`);
+
+                // Keep the track so filters can toggle it later; we may hide it immediately.
+                tracks.push(track);
+
+                if (activeRecommendationKeys && activeRecommendationKeys.size > 0) {
+                    if (!activeRecommendationKeys.has(gpxName)) {
+                        map.removeLayer(track.layer);
+                    }
+                } else if (!trackAttachMatchesLatestFilters(type, season, gpxName)) {
+                    map.removeLayer(track.layer);
+                }
+            } catch (error) {
+                console.error(`[track] failed: ${sourceId}`, error);
             }
 
-            loadedGeoJSONFiles[dataType + gpxBaseName] = true; // Mark this file as loaded
+            };
+            if (mapLoaded) attachTrack();
+            else pendingTrackAdds.push(attachTrack);
         })
         .catch(error => {
             console.error(`Error loading ${gpxBaseName}.geojson:`, error);
@@ -1435,24 +1731,57 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
 
 // Function to focus on a GPX track
 function focusOnGPXName(gpxName) {
-    tracks.forEach(track => {
+    tracks.forEach((track) => {
         if (track.gpxName === gpxName) {
-            track.layer.bringToFront();
-            track.layer.eachLayer(function(layer) {
-                layer.setStyle({ weight: 6 });
-
-                if (track.bounds && track.bounds.isValid()) {
-                    map.fitBounds(track.bounds, { padding: [50, 50] });
-                }
-
-                if (layer.getPopup && layer.getPopup()) {
-                    layer.openPopup();
-                }
-            });
-        } else {
-            track.layer.eachLayer(function(layer) {
-                layer.setStyle({ weight: 3 });
-            });
+            track.adapter.bringToFront();
+            if (map.getLayer(track.lineLayerId)) {
+                map.setPaintProperty(track.lineLayerId, 'line-width', 6);
+            }
+            if (track.bounds && track.bounds.isValid()) {
+                map.fitBounds(track.bounds, { padding: [50, 50] });
+            }
+            if (!track.opensBikeImmersive && track.popupContent && track.bounds && track.bounds.isValid()) {
+                map.closePopup();
+                const sw = track.bounds.getSouthWest();
+                const ne = track.bounds.getNorthEast();
+                const centerLng = (sw.lng + ne.lng) / 2;
+                const centerLat = (sw.lat + ne.lat) / 2;
+                const maxW =
+                    track.popupOptions && track.popupOptions.maxWidth != null
+                        ? `${track.popupOptions.maxWidth}px`
+                        : '520px';
+                const p = new mapboxgl.Popup({
+                    closeButton: false,
+                    offset: 12,
+                    maxWidth: maxW,
+                    className: (function() {
+                        const cls = (track.popupOptions && track.popupOptions.className) ? track.popupOptions.className : '';
+                        return ['skadi-track-popup', cls].filter(Boolean).join(' ');
+                    })()
+                })
+                    .setLngLat([centerLng, centerLat])
+                    .setHTML(track.popupContent);
+                p.on('open', function () {
+                    const el = p.getElement && p.getElement();
+                    const closeBtn = el ? el.querySelector('.track-popup-close') : null;
+                    if (!closeBtn) return;
+                    closeBtn.addEventListener('click', function (ev) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        p.remove();
+                    }, { once: true });
+                });
+                p.on('close', () => {
+                    if (map && map.getLayer(track.lineLayerId)) {
+                        map.setPaintProperty(track.lineLayerId, 'line-width', 3);
+                    }
+                    if (map && map._skadiLinePopup === p) map._skadiLinePopup = null;
+                });
+                p.addTo(map);
+                map._skadiLinePopup = p;
+            }
+        } else if (map.getLayer(track.lineLayerId)) {
+            map.setPaintProperty(track.lineLayerId, 'line-width', 3);
         }
     });
 }
@@ -1468,7 +1797,8 @@ function loadData() {
 
     markers = [];
     tracks = [];
-    loadedGeoJSONFiles = {};
+    geojsonDataPromiseCache = {};
+    pendingTrackAdds = [];
     gpxNames = [];
     gpxNameSet = new Set();
     gpxNameToMarker = {};
@@ -1494,7 +1824,7 @@ function loadData() {
             // When multiple summits share one activity, CSV export leaves activity columns empty for merged rows. Carry them over.
             let lastActivity = null;
 
-            rows.forEach(row => {
+            rows.forEach((row, rowIndex) => {
                 if (!row.trim()) return;
 
                 const isBikeTab = currentTab === 'bike';
@@ -1656,14 +1986,17 @@ function loadData() {
 
                     if (!summitKeys.has(summitKey)) {
                         const projectColor = getProjectColor(project);
-                        const summitIcon = createTriangleIcon(projectColor, isCompleted);
-
-                        const marker = L.marker([summitLatitude, summitLongitude], { icon: summitIcon })
-                            .addTo(map)
-                            .bindPopup(buildSummitPopupContent(name, altitude, project, isCompleted ? 'completed' : 'to do'));
+                        const markerLayer = createSummitMapboxMarker(
+                            summitLatitude,
+                            summitLongitude,
+                            projectColor,
+                            isCompleted,
+                            buildSummitPopupContent(name, altitude, project, isCompleted ? 'completed' : 'to do')
+                        );
+                        markerLayer._skadiAddTo(map);
 
                         const markerState = {
-                            layer: marker,
+                            layer: markerLayer,
                             type: type,
                             status: isCompleted ? 'completed' : 'to do',
                             season: season,
@@ -1676,7 +2009,7 @@ function loadData() {
                         markers.push(markerState);
 
                         if (gpxName) {
-                            gpxNameToMarker[gpxName] = marker;
+                            gpxNameToMarker[gpxName] = markerLayer;
                         }
 
                         summitKeys.add(summitKey);
@@ -1777,11 +2110,14 @@ function loadData() {
                         activityUrl,
                         photoUrls,
                         journalEntry,
-                        bikeImmersiveMeta
+                        bikeImmersiveMeta,
+                        rowIndex
                     );
                 }
 
             });
+
+            applySummitMarkerPaintOrderWeights();
 
             activityCatalog = Array.from(activityCatalogByKey.values());
             if (currentTab === 'summits') {
@@ -2715,7 +3051,8 @@ function initPhotoSwipeLightbox() {
     window._pswpPhotoItems = [];
     photoSwipeLightbox = new PhotoSwipeLightbox({
         pswpModule: PhotoSwipe,
-        showHideAnimationType: 'none'
+        showHideAnimationType: 'none',
+        loop: false
     });
     photoSwipeLightbox.addFilter('numItems', function() {
         return (window._pswpPhotoItems && window._pswpPhotoItems.length) || 0;
@@ -2723,10 +3060,29 @@ function initPhotoSwipeLightbox() {
     photoSwipeLightbox.addFilter('itemData', function(itemData, index) {
         return window._pswpPhotoItems[index];
     });
+
+    // Close automatically when the user reaches the last photo.
+    // Prevents the previous "loop forever" UX where navigation wraps back to the start.
+    const closeIfLast = function () {
+        const pswp = photoSwipeLightbox.pswp;
+        if (!pswp) return;
+        const itemsLen = (window._pswpPhotoItems && window._pswpPhotoItems.length) || 0;
+        if (!itemsLen || itemsLen <= 1) return;
+        const curr = typeof pswp.currIndex === 'number'
+            ? pswp.currIndex
+            : (typeof pswp.getCurrentIndex === 'function' ? pswp.getCurrentIndex() : 0);
+        if (curr === itemsLen - 1 && typeof pswp.close === 'function') {
+            pswp.close();
+        }
+    };
+
+    // PhotoSwipe lightbox emits 'change' when index changes.
+    photoSwipeLightbox.on('change', closeIfLast);
+
     photoSwipeLightbox.init();
 }
 
-// Use capture phase so we receive the click before Leaflet's popup stops propagation
+// Use capture phase so we receive the click before the map popup stops propagation
 document.body.addEventListener('click', function(e) {
     const btn = e.target.closest('.popup-photos-btn');
     if (!btn) return;
@@ -2764,6 +3120,10 @@ document.body.addEventListener('click', function(e) {
 // Initialize the app
 document.addEventListener('DOMContentLoaded', function() {
     initMap();
+    if (!map) {
+        console.error('Skadi: map not initialized (check Mapbox GL script and token).');
+        return;
+    }
 
     // Set the default tab to summits
     currentTab = 'summits';
@@ -2797,8 +3157,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     initBikeJournalControls();
 
-    // Set the default map view for summits
-    map.setView([46.2, 7.5], 8);
-
-    loadData();
+    function whenMapStyleReady(fn) {
+        if (typeof map.isStyleLoaded === 'function' && map.isStyleLoaded()) {
+            fn();
+        } else {
+            map.once('load', fn);
+        }
+    }
+    whenMapStyleReady(function () {
+        map.setView([46.2, 7.5], 8);
+        loadData();
+    });
 });

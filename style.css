@@ -21,8 +21,7 @@
 }
 
 .popup-photos-btn:focus {
-  outline: 1px dotted currentColor;
-  outline-offset: 1px;
+  outline: none;
 }
 
 .popup-journal-row {
@@ -47,8 +46,7 @@
 }
 
 .popup-journal-btn:focus {
-  outline: 1px dotted currentColor;
-  outline-offset: 1px;
+  outline: none;
 }
 
 .popup-journal-text {
@@ -58,13 +56,83 @@
   line-height: 1.4;
 }
 
-/* journal popup min width — adjust here */
-.leaflet-popup.journal-text-popup .leaflet-popup-content-wrapper {
+/* Center the Strava/Komoot link in track popups (Mac-like neat UX). */
+.mapboxgl-popup .popup-activity-link {
+  display: block;
+  width: fit-content;
+  margin: 6px auto 0;
+  text-align: center;
+}
+
+/* journal popup min width — adjust here (Mapbox GL) */
+.mapboxgl-popup.journal-text-popup .mapboxgl-popup-content-wrapper {
   min-width: 520px;
 }
 
-.leaflet-popup.journal-text-popup .leaflet-popup-content {
+.mapboxgl-popup.journal-text-popup .mapboxgl-popup-content {
   margin-bottom: 1px;
+}
+
+/* Ensure track popups always render above summit triangles (markers are DOM overlays too). */
+.mapboxgl-popup {
+  z-index: 10000 !important;
+}
+
+/* Neat UX: rounded corners + subtle softness (Mac-like). */
+.mapboxgl-popup-content {
+  border-radius: 8px !important;
+  overflow: hidden;
+  padding-right: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+/* Track popup header: [Title] [📷] [📖] [×] */
+.track-popup-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.track-popup-title {
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.track-popup-close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 2px;
+  color: #666;
+}
+
+.track-popup-close:hover {
+  color: #222;
+}
+
+/* Avoid the old inline margins inside the flex header row. */
+.track-popup-header .popup-photos-row,
+.track-popup-header .popup-journal-row {
+  margin-left: 0 !important;
+  display: flex;
+  align-items: center;
+}
+
+/* Make the emoji buttons sit neatly in the header. */
+.track-popup-header .popup-photos-btn,
+.track-popup-header .popup-journal-btn {
+  font-size: 1.15em;
+  padding: 0;
+}
+
+.mapboxgl-popup-close-button {
+  border-radius: 6px;
+  top: 4px !important;
+  right: 4px !important;
 }
 
 /* Hidden legend toggle and panel */
