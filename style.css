@@ -527,11 +527,22 @@ body.journal-open #map {
   line-height: 1.1;
 }
 
+#journal-close-btn,
+.bike-journal-nav-btn,
+.bike-journal-close-btn {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+#journal-close-btn:hover,
+.bike-journal-nav-btn:hover:not(.is-disabled),
+.bike-journal-close-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
 #journal-close-btn {
   display: grid;
   place-items: center;
-  border: none;
-  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   color: #fff;
   width: 34px;
   height: 34px;
@@ -541,7 +552,7 @@ body.journal-open #map {
 }
 
 #journal-close-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.22);
 }
 
 #journal-content {
@@ -659,7 +670,6 @@ body.bike-journal-open #bike-journal-immersive:not(.hidden) {
   padding-bottom: 0;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
   color: #fff;
   line-height: 1;
   font-family: inherit;
@@ -682,8 +692,8 @@ body.bike-journal-open #bike-journal-immersive:not(.hidden) {
   position: absolute;
   left: 66%;
   top: 50%;
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-top: 3px solid #fff;
   border-right: 3px solid #fff;
   transform: translate(-50%, -50%) rotate(-135deg);
@@ -698,8 +708,8 @@ body.bike-journal-open #bike-journal-immersive:not(.hidden) {
   position: absolute;
   left: 33%;
   top: 50%;
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-top: 3px solid #fff;
   border-right: 3px solid #fff;
   transform: translate(-50%, -50%) rotate(45deg);
@@ -715,7 +725,7 @@ body.bike-journal-open #bike-journal-immersive:not(.hidden) {
 }
 
 .bike-journal-nav-btn:hover:not(.is-disabled) {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.22);
   padding: 0;
   padding-top: 0;
   padding-bottom: 0;
@@ -746,7 +756,6 @@ body.bike-journal-open #bike-journal-immersive:not(.hidden) {
   padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.12);
   color: #fff;
   font-size: 24px;
   line-height: 0;
