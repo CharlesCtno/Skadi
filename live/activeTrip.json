@@ -1,8 +1,8 @@
 {
-  "isActive": true,
-  "tripId": "2026-03-27_dream-adventure",
-  "tripName": "Dream adventure",
-  "updatedAt": "2026-03-26T19:02:40.799843+00:00",
+  "isActive": false,
+  "tripId": "",
+  "tripName": "",
+  "updatedAt": "2026-03-26T19:04:13.964254+00:00",
   "liveDayActive": false,
-  "liveDayUpdatedAt": "2026-03-26T19:02:40.799829+00:00"
+  "liveDayUpdatedAt": ""
 }
