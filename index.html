@@ -241,6 +241,19 @@
   </ul>
   <div id="tab-content">
     <div id="map"></div>
+    <button id="adventure-live-banner" type="button" class="hidden" aria-live="polite" aria-label="Actualiser le suivi live">
+      <span id="adventure-live-record-dot" aria-hidden="true"></span>
+      <span id="adventure-live-banner-text">Adventure mode actif</span>
+    </button>
+    <div id="adventure-local-controls" class="hidden" aria-label="Contrôles locaux Adventure mode">
+      <button id="adventure-toggle-btn" type="button">Activer aventure</button>
+      <button id="adventure-live-day-btn" type="button">Activer partage live (jour)</button>
+      <div class="adventure-local-point-row">
+        <input id="adventure-point-input" type="text" placeholder="lat,lng (ex: 46.5,6.6)" autocomplete="off" />
+        <button id="adventure-add-point-btn" type="button">Ajouter point</button>
+      </div>
+      <div id="adventure-local-error" class="hidden" aria-live="polite"></div>
+    </div>
     <!-- Bike immersive journal: map 25vh + journal (min 75vh); page scroll; sticky bar inside journal -->
     <div id="bike-journal-immersive" class="hidden" aria-hidden="true">
       <div class="bike-journal-sticky-bar">

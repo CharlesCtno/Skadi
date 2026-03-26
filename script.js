@@ -32,6 +32,31 @@ let bikeJournalCurrentGpxName = null;
 /** If true, restore map 3D after closing immersive bike journal (session-only). */
 let bikeMap3DResumeAfterJournal = false;
 
+// Adventure mode (phase 1): read-only live feed + localhost debug controls.
+const ADVENTURE_ACTIVE_TRIP_PATH = 'live/activeTrip.json';
+const ADVENTURE_LIVE_SOURCE_ID = 'adventure-live-source';
+const ADVENTURE_LIVE_CASING_LAYER_ID = 'adventure-live-line-casing';
+const ADVENTURE_LIVE_LAYER_ID = 'adventure-live-line';
+const ADVENTURE_LATEST_SOURCE_ID = 'adventure-latest-source';
+const ADVENTURE_LATEST_LAYER_ID = 'adventure-latest-dot';
+const ADVENTURE_LOCAL_TRIP_ID = 'local-debug-session';
+const ADVENTURE_LOCAL_TRIP_NAME = 'Dream adventure';
+
+let adventureModeActive = false;
+let adventureDailyLiveSharingActive = false;
+let adventureRemoteLiveDayActive = false;
+let adventureLocalDebugPoints = [];
+let adventureLastError = '';
+let adventureLastRefreshAt = null;
+let adventureLiveState = {
+    isActive: false,
+    tripId: '',
+    tripName: '',
+    points: [],
+    updatedAt: '',
+    liveDayActive: false
+};
+
 // Chatbot "Mode 2" (recommendation) view: enable true 3D (terrain + building extrusions),
 // while keeping normal 2D for Mode 1/filter and for other UI states.
 let skadiChat3DEnabled = false;
@@ -78,6 +103,107 @@ const SKADI_OSM_RASTER_STYLE = {
 function isLocalDevHost() {
     const host = (window.location.hostname || '').toLowerCase();
     return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local');
+}
+
+function normalizeAdventurePoint(rawPoint, idx) {
+    if (!rawPoint || typeof rawPoint !== 'object') return null;
+    const lat = Number(rawPoint.lat);
+    const lng = Number(rawPoint.lng);
+    const tsRaw = String(rawPoint.ts || '').trim();
+    const tsMs = Date.parse(tsRaw);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    return {
+        lat,
+        lng,
+        ts: Number.isFinite(tsMs) ? new Date(tsMs).toISOString() : new Date(Date.now() + idx).toISOString(),
+        note: rawPoint.note == null ? null : String(rawPoint.note),
+        photos: Array.isArray(rawPoint.photos) ? rawPoint.photos.slice() : []
+    };
+}
+
+function buildAdventureLineFeatureCollection(points) {
+    return {
+        type: 'FeatureCollection',
+        features: points.length >= 2
+            ? [{
+                type: 'Feature',
+                geometry: {
+                    type: 'LineString',
+                    coordinates: points.map((p) => [p.lng, p.lat])
+                },
+                properties: {}
+            }]
+            : []
+    };
+}
+
+function buildAdventureLatestPointFeatureCollection(points) {
+    const latest = points.length ? points[points.length - 1] : null;
+    return {
+        type: 'FeatureCollection',
+        features: latest ? [{
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [latest.lng, latest.lat] },
+            properties: { ts: latest.ts }
+        }] : []
+    };
+}
+
+async function fetchJsonOrNull(url) {
+    try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) {
+            if (res.status === 404) return null;
+            throw new Error(`HTTP ${res.status}`);
+        }
+        return await res.json();
+    } catch (err) {
+        throw new Error(`fetch failed for ${url}: ${err && err.message ? err.message : String(err)}`);
+    }
+}
+
+async function fetchAdventureLiveStateFromRepo() {
+    const active = await fetchJsonOrNull(ADVENTURE_ACTIVE_TRIP_PATH);
+    if (!active || !active.isActive) {
+        return { isActive: false, tripId: '', tripName: '', points: [], updatedAt: '', liveDayActive: false };
+    }
+    const tripId = String(active.tripId || '').trim();
+    if (!tripId) {
+        throw new Error('activeTrip.json is active but tripId is empty');
+    }
+    const pointsPath = `live/trips/${tripId}/points.json`;
+    const pointsDoc = await fetchJsonOrNull(pointsPath);
+    const pointsRaw = pointsDoc && Array.isArray(pointsDoc.points) ? pointsDoc.points : [];
+    const points = pointsRaw
+        .map((p, idx) => normalizeAdventurePoint(p, idx))
+        .filter(Boolean)
+        .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
+    return {
+        isActive: true,
+        tripId,
+        tripName: String(active.tripName || tripId),
+        points,
+        updatedAt: String(active.updatedAt || ''),
+        liveDayActive: !!active.liveDayActive
+    };
+}
+
+function getEffectiveAdventureLiveState(remoteState) {
+    if (isLocalDevHost() && adventureModeActive) {
+        const points = adventureLocalDebugPoints
+            .slice()
+            .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
+        return {
+            isActive: true,
+            tripId: ADVENTURE_LOCAL_TRIP_ID,
+            tripName: ADVENTURE_LOCAL_TRIP_NAME,
+            points,
+            updatedAt: points.length ? points[points.length - 1].ts : new Date().toISOString(),
+            liveDayActive: !!adventureDailyLiveSharingActive
+        };
+    }
+    return remoteState;
 }
 
 /** Position journal panel below the main header; match map height to remaining viewport (header + tabs). */
@@ -216,6 +342,7 @@ function openJournalPanel(activityName, journalPath) {
     panel.setAttribute('aria-hidden', 'false');
 
     updateMap3DToggleButton();
+    updateAdventureUI();
 
     // Give CSS transition time, then resize the map canvas.
     setTimeout(() => {
@@ -266,6 +393,7 @@ function closeJournalPanel() {
     journalPanelOpen = false;
     clearJournalPanelLayout();
     updateMap3DToggleButton();
+    updateAdventureUI();
     setTimeout(() => {
         if (map) map.invalidateSize();
     }, 320);
@@ -457,6 +585,7 @@ function openBikeImmersiveJournal(entry) {
     panel.setAttribute('aria-hidden', 'false');
 
     updateMap3DToggleButton();
+    updateAdventureUI();
 
     window.scrollTo(0, 0);
 
@@ -486,12 +615,14 @@ function closeBikeImmersiveJournal() {
     const shouldResume3D = bikeMap3DResumeAfterJournal;
     bikeMap3DResumeAfterJournal = false;
     updateMap3DToggleButton();
+    updateAdventureUI();
     setTimeout(() => {
         if (map) map.invalidateSize();
         if (currentTab === 'bike' && shouldResume3D && !isLocalDevHost()) {
             enableSkadiChat3DMode();
         }
         updateMap3DToggleButton();
+        updateAdventureUI();
     }, BIKE_JOURNAL_MAP_RESIZE_MS);
 }
 
@@ -795,6 +926,146 @@ function initMap() {
             }
         });
     });
+}
+
+function removeAdventureLiveLayers() {
+    if (!map) return;
+    try {
+        if (map.getLayer(ADVENTURE_LIVE_CASING_LAYER_ID)) map.removeLayer(ADVENTURE_LIVE_CASING_LAYER_ID);
+    } catch (_e) {}
+    try {
+        if (map.getLayer(ADVENTURE_LIVE_LAYER_ID)) map.removeLayer(ADVENTURE_LIVE_LAYER_ID);
+    } catch (_e) {}
+    try {
+        if (map.getSource(ADVENTURE_LIVE_SOURCE_ID)) map.removeSource(ADVENTURE_LIVE_SOURCE_ID);
+    } catch (_e) {}
+    try {
+        if (map.getLayer(ADVENTURE_LATEST_LAYER_ID)) map.removeLayer(ADVENTURE_LATEST_LAYER_ID);
+    } catch (_e) {}
+    try {
+        if (map.getSource(ADVENTURE_LATEST_SOURCE_ID)) map.removeSource(ADVENTURE_LATEST_SOURCE_ID);
+    } catch (_e) {}
+}
+
+function renderAdventureLiveLayers(state) {
+    if (!map) return;
+    if (!state || !state.isActive || currentTab !== 'bike') {
+        removeAdventureLiveLayers();
+        return;
+    }
+
+    const lineData = buildAdventureLineFeatureCollection(state.points);
+    const latestData = buildAdventureLatestPointFeatureCollection(state.points);
+
+    if (!map.getSource(ADVENTURE_LIVE_SOURCE_ID)) {
+        map.addSource(ADVENTURE_LIVE_SOURCE_ID, { type: 'geojson', data: lineData });
+    } else {
+        map.getSource(ADVENTURE_LIVE_SOURCE_ID).setData(lineData);
+    }
+    if (!map.getLayer(ADVENTURE_LIVE_CASING_LAYER_ID)) {
+        map.addLayer({
+            id: ADVENTURE_LIVE_CASING_LAYER_ID,
+            type: 'line',
+            source: ADVENTURE_LIVE_SOURCE_ID,
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: {
+                'line-color': '#7a7a7a',
+                'line-width': 4,
+                'line-opacity': 0.95
+            }
+        });
+    }
+    if (!map.getLayer(ADVENTURE_LIVE_LAYER_ID)) {
+        map.addLayer({
+            id: ADVENTURE_LIVE_LAYER_ID,
+            type: 'line',
+            source: ADVENTURE_LIVE_SOURCE_ID,
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: {
+                'line-color': '#ffffff',
+                'line-width': 2.3,
+                'line-opacity': 1
+            }
+        });
+    }
+
+    if (!map.getSource(ADVENTURE_LATEST_SOURCE_ID)) {
+        map.addSource(ADVENTURE_LATEST_SOURCE_ID, { type: 'geojson', data: latestData });
+    } else {
+        map.getSource(ADVENTURE_LATEST_SOURCE_ID).setData(latestData);
+    }
+    if (!map.getLayer(ADVENTURE_LATEST_LAYER_ID)) {
+        map.addLayer({
+            id: ADVENTURE_LATEST_LAYER_ID,
+            type: 'circle',
+            source: ADVENTURE_LATEST_SOURCE_ID,
+            paint: {
+                'circle-radius': 7,
+                'circle-color': '#45818e',
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-width': 2
+            }
+        });
+    }
+}
+
+function updateAdventureLocalControlsUI() {
+    const controls = document.getElementById('adventure-local-controls');
+    const btnAdventure = document.getElementById('adventure-toggle-btn');
+    const btnLiveDay = document.getElementById('adventure-live-day-btn');
+    if (!controls) return;
+    const show = isLocalDevHost() && currentTab === 'bike' && !bikeJournalOpen;
+    controls.classList.toggle('hidden', !show);
+    if (!show) return;
+    if (btnAdventure) btnAdventure.textContent = adventureModeActive ? 'Désactiver aventure' : 'Activer aventure';
+    if (btnLiveDay) {
+        btnLiveDay.textContent = adventureDailyLiveSharingActive ? 'Désactiver partage live (jour)' : 'Activer partage live (jour)';
+        btnLiveDay.disabled = !adventureModeActive;
+    }
+}
+
+function updateAdventureBannerUI() {
+    const banner = document.getElementById('adventure-live-banner');
+    const label = document.getElementById('adventure-live-banner-text');
+    if (!banner || !label) return;
+    const show = currentTab === 'bike' && !bikeJournalOpen && adventureLiveState.isActive;
+    banner.classList.toggle('hidden', !show);
+    const isLiveDay = (isLocalDevHost() && adventureModeActive)
+        ? !!adventureDailyLiveSharingActive
+        : !!adventureRemoteLiveDayActive;
+    banner.classList.toggle('is-live-day', isLiveDay);
+    if (!show) return;
+    const latestTs = adventureLiveState.points.length
+        ? adventureLiveState.points[adventureLiveState.points.length - 1].ts
+        : '';
+    const latestText = latestTs ? new Date(latestTs).toLocaleString('fr-CH') : 'aucun point';
+    const err = adventureLastError ? ` | erreur: ${adventureLastError}` : '';
+    label.textContent = `${adventureLiveState.tripName || adventureLiveState.tripId} | Dernier point: ${latestText}${err}`;
+}
+
+function updateAdventureUI() {
+    updateAdventureLocalControlsUI();
+    updateAdventureBannerUI();
+}
+
+async function refreshAdventureLiveState(reason) {
+    const why = reason || 'manual';
+    adventureLastError = '';
+    let remoteState = { isActive: false, tripId: '', tripName: '', points: [], updatedAt: '' };
+    try {
+        remoteState = await fetchAdventureLiveStateFromRepo();
+    } catch (err) {
+        adventureLastError = err && err.message ? err.message : String(err);
+    }
+    adventureRemoteLiveDayActive = !!remoteState.liveDayActive;
+    adventureLiveState = getEffectiveAdventureLiveState(remoteState);
+    adventureLastRefreshAt = new Date().toISOString();
+    try {
+        renderAdventureLiveLayers(adventureLiveState);
+    } catch (err) {
+        adventureLastError = `render failed (${why}): ${err && err.message ? err.message : String(err)}`;
+    }
+    updateAdventureUI();
 }
 
 // Leaflet-compatible shape: `{ html }` for legend + marker.setIcon
@@ -2476,6 +2747,12 @@ document.querySelectorAll('#tabs a').forEach(tab => {
         }
 
         updateMap3DToggleButton();
+        if (currentTab === 'bike') {
+            refreshAdventureLiveState('tab-switch');
+        } else {
+            renderAdventureLiveLayers({ isActive: false, points: [] });
+            updateAdventureUI();
+        }
     });
 });
 
@@ -3494,9 +3771,78 @@ document.addEventListener('DOMContentLoaded', function() {
     if (journalCloseBtn) {
         journalCloseBtn.addEventListener('click', function() {
             closeJournalPanel();
+            updateAdventureUI();
         });
     }
     initBikeJournalControls();
+
+    const adventureBannerBtn = document.getElementById('adventure-live-banner');
+    if (adventureBannerBtn) {
+        adventureBannerBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            refreshAdventureLiveState('banner-click');
+        });
+    }
+
+    const adventureToggleBtn = document.getElementById('adventure-toggle-btn');
+    if (adventureToggleBtn) {
+        adventureToggleBtn.addEventListener('click', function() {
+            if (!isLocalDevHost()) return;
+            adventureModeActive = !adventureModeActive;
+            if (!adventureModeActive) {
+                adventureDailyLiveSharingActive = false;
+                adventureLocalDebugPoints = [];
+            }
+            refreshAdventureLiveState('local-adventure-toggle');
+        });
+    }
+
+    const adventureLiveDayBtn = document.getElementById('adventure-live-day-btn');
+    if (adventureLiveDayBtn) {
+        adventureLiveDayBtn.addEventListener('click', function() {
+            if (!isLocalDevHost() || !adventureModeActive) return;
+            adventureDailyLiveSharingActive = !adventureDailyLiveSharingActive;
+            updateAdventureUI();
+        });
+    }
+
+    const adventurePointInput = document.getElementById('adventure-point-input');
+    const adventureAddPointBtn = document.getElementById('adventure-add-point-btn');
+    const adventureErrorEl = document.getElementById('adventure-local-error');
+    if (adventureAddPointBtn && adventurePointInput) {
+        adventureAddPointBtn.addEventListener('click', function() {
+            if (!isLocalDevHost() || !adventureModeActive) return;
+            const raw = String(adventurePointInput.value || '').trim();
+            const bits = raw.split(',').map((s) => s.trim());
+            if (bits.length !== 2) {
+                if (adventureErrorEl) {
+                    adventureErrorEl.textContent = 'Format attendu: lat,lng';
+                    adventureErrorEl.classList.remove('hidden');
+                }
+                return;
+            }
+            const point = normalizeAdventurePoint({
+                lat: Number(bits[0]),
+                lng: Number(bits[1]),
+                ts: new Date().toISOString()
+            }, adventureLocalDebugPoints.length);
+            if (!point) {
+                if (adventureErrorEl) {
+                    adventureErrorEl.textContent = 'Coordonnées invalides';
+                    adventureErrorEl.classList.remove('hidden');
+                }
+                return;
+            }
+            if (adventureErrorEl) {
+                adventureErrorEl.textContent = '';
+                adventureErrorEl.classList.add('hidden');
+            }
+            adventureLocalDebugPoints.push(point);
+            adventurePointInput.value = '';
+            refreshAdventureLiveState('local-point-add');
+        });
+    }
 
     const map3dToggleBtn = document.getElementById('map-3d-toggle');
     if (map3dToggleBtn) {
@@ -3531,5 +3877,7 @@ document.addEventListener('DOMContentLoaded', function() {
         map.setView([46.2, 7.5], 8);
         loadData();
         updateMap3DToggleButton();
+        refreshAdventureLiveState('initial-load');
+        updateAdventureUI();
     });
 });
