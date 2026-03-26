@@ -59,19 +59,65 @@ An **English UI toggle** is not planned as a requirement, only a possible long-t
 - **Mode 2:** Recommends top 3 completed activities using distance, duration, elevation, cotation (T1–T6), and/or location; optional **keyword pre-filter** from the same journal keyword cache (built once per session in the background). When Mode 2 triggers, Skadi also enables a 3D map view (terrain + building extrusions) with mouse rotation (pitch clamped); touch rotation stays disabled.
 - See `VISION.md` for behavior details and roadmap.
 
+## Adventure Mode (MVP)
+
+Adventure mode now has an MVP "live trip" path for bikepacking:
+
+- Public website reads JSON under `live/` and renders:
+  - full-width adventure banner on bike tab
+  - latest point marker
+  - live polyline (white core + thin gray border)
+- Live updates are written through GitHub Actions `workflow_dispatch`:
+  - `.github/workflows/adventure_live_dispatch.yml`
+  - `scripts/adventure_live_dispatch.py`
+- Data contract:
+  - `live/activeTrip.json`
+  - `live/trips/<tripId>/points.json`
+  - see `docs/ADVENTURE_MODE_LIVE_SCHEMA.md`
+
+### Triggering from phone (current setup)
+
+- Manual controls (HTTP Shortcuts):
+  - Start Trip
+  - Start Live Day
+  - Stop Live Day
+  - Stop Trip
+- GPS point posting (Automate):
+  - Add Point (auto location)
+- Request templates + headers:
+  - see `docs/ADVENTURE_MODE_TASKER_MVP.md`
+
+### Next steps for Adventure Mode
+
+- Merge phone UX into a single launcher (or fully Automate-based flow).
+- Add automatic periodic/location-aware point posting while trip + live day are active.
+- Add manual debug enrichment for points (`note`, `photos`) before full automation.
+- Move from phone-side token usage to safer auth patterns over time.
+
+### Security notes
+
+- Use a fine-grained PAT scoped only to this repository and Actions write.
+- Prefer short-lived tokens and rotate regularly.
+- If a token is exposed, revoke it immediately and create a new one (already done in current setup).
+
 ## Key Files
 
 - `index.html` – Map container, tabs (Sommets / Bikepacking), Skadi chatbot, legend, photo lightbox, summits journal panel, **immersive bike journal** shell
-- `script.js` – Map init, CSV parsing (summits + fixed A–J bike sheet), markers, track layers, **bike immersive journal** (navigation, track highlight, map fit), Skadi, photo lightbox, Markdown rendering (`marked`), keyword cache
+- `script.js` – Map init, CSV parsing (summits + fixed A–J bike sheet), markers, track layers, **bike immersive journal** (navigation, track highlight, map fit), Skadi, photo lightbox, Markdown rendering (`marked`), keyword cache, adventure live banner/layers
 - `style.css` – Layout and theme for map, popups, chatbot, legend, bike immersive journal
 - `journal/` – Markdown récits (`journal/…` from column T summits or column J bike)
 - `docs/BIKE_SHEET_SCHEMA.md` – Bike tab column layout (A–J)
+- `docs/ADVENTURE_MODE_LIVE_SCHEMA.md` – Adventure live JSON schema (`activeTrip.json`, `points.json`)
+- `docs/ADVENTURE_MODE_TASKER_MVP.md` – Phone trigger request templates for HTTP Shortcuts / Automate
 - `scripts/strava_sync.py` – Fetches a named Strava activity; `--destination sommets|bikepacking` selects Progrès (OSM, summits layout) vs Bikepacking (A–J, no OSM); pushes GPX to `data/raw/` or `data/bike/raw/`
 - `scripts/strava_backfill_photos.py` – One-time backfill of photo URLs into column S for existing activities
 - `scripts/convert_gpx.py` – Converts GPX files to GeoJSON (run automatically via GitHub Actions)
+- `scripts/adventure_live_dispatch.py` – Applies live trip actions (`start_trip`, `start_live_day`, `add_point`, `stop_live_day`, `stop_trip`)
 - `scripts/test_sheet_sync.py` – Local test script to simulate a Strava sync without API calls
 - `.github/workflows/strava_sync.yml` – Manual trigger: activity name + destination (`sommets` / `bikepacking`), runs full sync
 - `.github/workflows/convert_gpx.yml` – Auto-triggered when GPX files are pushed to raw folders
+- `.github/workflows/adventure_live_dispatch.yml` – Manual/API dispatch endpoint for phone-triggered live updates
+- `.github/workflows/deploy-pages.yml` – Deploys site on push and after successful Adventure Live Dispatch runs
 
 ## Conventions
 
@@ -105,6 +151,7 @@ An **English UI toggle** is not planned as a requirement, only a possible long-t
 | ✅ | Journal column T: inline popup text + `journal/` Markdown récit (summits) |
 | ✅ | **Journal keywords** (bold in T / Markdown) + Skadi Mode 1 & 2 |
 | ✅ | **Immersive bike journal** (map + Markdown, étape nav, track selection) |
+| ✅ | **Adventure Mode MVP**: live banner + latest point + live polyline + phone-trigger dispatch workflow |
 | 🔜 (optional) | English UI toggle long-term only, not a milestone |
 
 ## Next steps

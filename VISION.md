@@ -97,8 +97,8 @@ Phases
 
 Activation and live flow
 1. At the beginning of a trip, you activate Adventure mode.
-2. While you ride, you trigger “Follow Live” when you start pedaling.
-3. GPS publishing happens automatically every 1–2 hours (based on your phone/Garmin readings).
+2. While you ride, GPS points are published from the phone flow.
+3. Publishing cadence can be manual now, then automated every 1–2 hours (or movement-based) later.
 4. Each published location updates the website’s latest marker and the polyline of the trip points.
 5. When connectivity is poor/absent, publishing is queued offline and synced to GitHub once you have signal.
 
@@ -106,7 +106,26 @@ Website behavior (bikepacking tab)
 - When `live/activeTrip.json` indicates the trip is active, show a banner indicating the trip.
 - Draw the trip polyline on the bikepacking map using `live/trips/<tripId>/points.json`.
 - Show a “latest” dot marker at the newest point.
-- “Follow Live” behaves like: when on, keep the view centered/fit to include the latest dot as new points arrive.
+
+Current MVP trigger setup (implemented)
+- GitHub endpoint: `.github/workflows/adventure_live_dispatch.yml` via `workflow_dispatch` writes `live/` JSON.
+- Phone control split (current pragmatic setup):
+  - **HTTP Shortcuts** for the 4 manual actions: Start Trip, Start Live Day, Stop Live Day, Stop Trip.
+  - **Automate** for GPS point posting (`add_point`) using device location.
+- The website reads public JSON only; no public login/auth UI.
+
+Near-term phone automation pattern (next step)
+- Keep the 4 manual controls in HTTP Shortcuts.
+- Run an Automate background loop that posts location only when both flags are active:
+  - `tripActive == true`
+  - `liveDayActive == true`
+- Suggested loop behavior:
+  - if active -> get GPS -> dispatch `add_point` -> wait interval (30/60/120 min)
+  - else -> short sleep (2–5 min) and re-check
+- Optional safety filters:
+  - skip low-accuracy fixes
+  - retry once on transient network failure
+  - deduplicate if point moved less than ~20–50m
 
 Later enrichment (photos and text)
 - After the trip (or later when you have signal), you can attach photos and a short note.
@@ -117,6 +136,11 @@ Authentication / “only you can trigger it” (approach A)
 - No login/auth UI is required on the public site.
 - Posting is done by a personal phone script that uses a GitHub auth token.
 - The phone script is the only writer; the website reads the public JSON files from the repo/Pages.
+
+Security notes (operational)
+- Use a fine-grained PAT scoped only to this repository with minimal permissions (Actions write).
+- Rotate tokens regularly and revoke immediately if exposed.
+- Avoid sharing tokens in chat apps; enter directly in phone apps when possible.
 
 ### Contact Charles flow
 After a Mode 2 recommendation, if the user mentions "charles" (case-insensitive) in any message, Skadi asks for their name and silently submits a Google Form with: user name, original request, Skadi's suggestions, and date. Skadi confirms: "Parfait ! Charles reviendra vers toi dès que possible."
