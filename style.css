@@ -83,7 +83,26 @@
   border-radius: 8px !important;
   overflow: hidden;
   padding-right: 12px;
+  background: #333;
+  color: #fff;
+  border: none;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.mapboxgl-popup[class*="mapboxgl-popup-anchor-top"] .mapboxgl-popup-tip {
+  border-bottom-color: #333 !important;
+}
+
+.mapboxgl-popup[class*="mapboxgl-popup-anchor-bottom"] .mapboxgl-popup-tip {
+  border-top-color: #333 !important;
+}
+
+.mapboxgl-popup[class*="mapboxgl-popup-anchor-left"] .mapboxgl-popup-tip {
+  border-right-color: #333 !important;
+}
+
+.mapboxgl-popup[class*="mapboxgl-popup-anchor-right"] .mapboxgl-popup-tip {
+  border-left-color: #333 !important;
 }
 
 /* Track popup header: [Title] [📷] [📖] [×] */
@@ -106,6 +125,7 @@
 .summit-popup-title {
   min-width: 0;
   flex: 1 1 auto;
+  font-size: 1.08em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -113,6 +133,7 @@
 
 .track-popup-title {
   font-weight: bold;
+  font-size: 1.08em;
   white-space: nowrap;
 }
 
@@ -126,12 +147,12 @@
   font-size: 18px;
   line-height: 1;
   padding: 0 2px;
-  color: #666;
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .summit-popup-close:hover,
 .track-popup-close:hover {
-  color: #222;
+  color: #fff;
 }
 
 /* Avoid the old inline margins inside the flex header row. */
@@ -147,6 +168,25 @@
 .track-popup-header .popup-journal-btn {
   font-size: 1.15em;
   padding: 0;
+}
+
+.summit-popup-body,
+.track-popup-body,
+.popup-journal-text {
+  color: #fff;
+}
+
+.summit-popup-body b,
+.track-popup-body b {
+  color: #fff;
+}
+
+.mapboxgl-popup .popup-activity-link {
+  background: #45818e;
+}
+
+.mapboxgl-popup .popup-activity-link:hover {
+  background: #45818e;
 }
 
 .mapboxgl-popup-close-button {
@@ -385,7 +425,7 @@
 
 .skadi-message.skadi-user {
   align-self: flex-end;
-  background: #4a7bd1;
+  background: #45818e;
 }
 
 #skadi-chat-form {
@@ -398,11 +438,17 @@
 #skadi-chat-input {
   flex: 1;
   min-width: 0;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border: 1px solid #45818e;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
   padding: 8px;
+}
+
+#skadi-chat-input:focus {
+  outline: none;
+  border-color: #45818e;
+  box-shadow: 0 0 0 1px #45818e;
 }
 
 #skadi-chat-input::placeholder {
@@ -413,9 +459,13 @@
   border: none;
   border-radius: 6px;
   padding: 8px 10px;
-  background: #4a7bd1;
+  background: #45818e;
   color: #fff;
   cursor: pointer;
+}
+
+#skadi-chat-send:hover:not(:disabled) {
+  background: #45818e;
 }
 
 #skadi-chat-send:disabled {
@@ -478,14 +528,15 @@ body.journal-open #map {
 }
 
 #journal-close-btn {
+  display: grid;
+  place-items: center;
   border: none;
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
   width: 34px;
   height: 34px;
   border-radius: 6px;
-  font-size: 24px;
-  line-height: 1;
+  line-height: 0;
   cursor: pointer;
 }
 
@@ -610,8 +661,7 @@ body.bike-journal-open #bike-journal-immersive:not(.hidden) {
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
-  font-size: 30px;
-  line-height: 0;
+  line-height: 1;
   font-family: inherit;
   cursor: pointer;
   transition: background 0.15s ease;
@@ -619,13 +669,44 @@ body.bike-journal-open #bike-journal-immersive:not(.hidden) {
   appearance: none;
 }
 
-/*
- * ‹ › (U+2039/U+203A): small upward nudge so optical center matches ×; × stays unadjusted.
- */
 .bike-journal-nav-glyph {
+  position: relative;
   display: block;
-  line-height: 0;
-  transform: translateY(-0.08em);
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+}
+
+.bike-journal-nav-glyph-prev::before {
+  content: "";
+  position: absolute;
+  left: 66%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-top: 3px solid #fff;
+  border-right: 3px solid #fff;
+  transform: translate(-50%, -50%) rotate(-135deg);
+}
+
+.bike-journal-nav-glyph-prev::after {
+  content: none;
+}
+
+.bike-journal-nav-glyph-next::before {
+  content: "";
+  position: absolute;
+  left: 33%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-top: 3px solid #fff;
+  border-right: 3px solid #fff;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.bike-journal-nav-glyph-next::after {
+  content: none;
 }
 
 .bike-journal-nav-btn::-moz-focus-inner {
@@ -676,8 +757,31 @@ body.bike-journal-open #bike-journal-immersive:not(.hidden) {
 }
 
 .bike-journal-close-glyph {
+  position: relative;
   display: block;
-  line-height: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.bike-journal-close-glyph::before,
+.bike-journal-close-glyph::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 3px;
+  background: #fff;
+  border-radius: 2px;
+  transform-origin: center;
+}
+
+.bike-journal-close-glyph::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.bike-journal-close-glyph::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 .bike-journal-close-btn::-moz-focus-inner {
@@ -692,7 +796,7 @@ body.bike-journal-open #bike-journal-immersive:not(.hidden) {
 .bike-journal-stats {
   padding: 8px 14px 12px;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.85);
+  color: #fff;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -705,15 +809,16 @@ body.bike-journal-open #bike-journal-immersive:not(.hidden) {
 
 .bike-journal-stats .bike-stat-label {
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.65);
+  color: #fff;
 }
 
 .bike-journal-stats a {
-  color: #80c2d1;
+  color: #45818e;
   text-decoration: none;
 }
 
 .bike-journal-stats a:hover {
+  color: #45818e;
   text-decoration: underline;
 }
 

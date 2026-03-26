@@ -59,7 +59,7 @@
     }
 
     #download-csv:hover {
-      background: #5a9aa8;
+      background: #45818e;
     }
 
     #tabs {
@@ -153,7 +153,7 @@
     }
 
     #apply-filters:hover {
-      background: #80c2d1;
+      background: #45818e;
     }
 
     .popup-activity-link {
@@ -178,7 +178,7 @@
     }
 
     .popup-activity-link:hover {
-      background: #80c2d1;
+      background: #45818e;
     }
 
     #search {
@@ -245,10 +245,10 @@
     <div id="bike-journal-immersive" class="hidden" aria-hidden="true">
       <div class="bike-journal-sticky-bar">
         <header class="bike-journal-frozen-header">
-          <button type="button" id="bike-journal-nav-prev" class="bike-journal-nav-btn" aria-label="Étape précédente"><span class="bike-journal-nav-glyph">‹</span></button>
+          <button type="button" id="bike-journal-nav-prev" class="bike-journal-nav-btn" aria-label="Étape précédente"><span class="bike-journal-nav-glyph bike-journal-nav-glyph-prev" aria-hidden="true"></span></button>
           <h2 id="bike-journal-title" class="bike-journal-title">Étape</h2>
-          <button type="button" id="bike-journal-nav-next" class="bike-journal-nav-btn" aria-label="Étape suivante"><span class="bike-journal-nav-glyph">›</span></button>
-          <button type="button" id="bike-journal-close" class="bike-journal-close-btn" aria-label="Fermer le récit"><span class="bike-journal-close-glyph">×</span></button>
+          <button type="button" id="bike-journal-nav-next" class="bike-journal-nav-btn" aria-label="Étape suivante"><span class="bike-journal-nav-glyph bike-journal-nav-glyph-next" aria-hidden="true"></span></button>
+          <button type="button" id="bike-journal-close" class="bike-journal-close-btn" aria-label="Fermer le récit"><span class="bike-journal-close-glyph" aria-hidden="true"></span></button>
         </header>
         <div id="bike-journal-stats" class="bike-journal-stats" aria-label="Statistiques de l’étape"></div>
       </div>
@@ -321,7 +321,7 @@
   <aside id="journal-panel" class="hidden" aria-hidden="true">
     <div id="journal-panel-header">
       <h2 id="journal-title"></h2>
-      <button id="journal-close-btn" type="button" aria-label="Fermer le récit">×</button>
+      <button id="journal-close-btn" type="button" aria-label="Fermer le récit"><span class="bike-journal-close-glyph" aria-hidden="true"></span></button>
     </div>
     <div id="journal-content"></div>
   </aside>

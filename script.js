@@ -41,7 +41,7 @@ const SKADI_CHAT_2D_PITCH = 0;
 const SKADI_CHAT_3D_PITCH = 30;
 const SKADI_CHAT_3D_BEARING = 0;
 const SKADI_CHAT_3D_PITCH_MIN = 0;
-const SKADI_CHAT_3D_PITCH_MAX = 70;
+const SKADI_CHAT_3D_PITCH_MAX = 80;
 
 const SKADI_CHAT_3D_TERRAIN_SOURCE_ID = 'skadi-chat-3d-terrain-dem';
 const SKADI_CHAT_3D_TERRAIN_SOURCE_URL = 'mapbox://mapbox.mapbox-terrain-dem-v1';
@@ -363,13 +363,37 @@ const BIKE_TRACK_JOURNAL_STYLE = {
     hitOpacitySelected: 0
 };
 
+/** Slightly thinner track lines in 3D reduce apparent stretching on tilted terrain. */
+const SKADI_TRACK_WIDTH_3D_FACTOR = 0.72;
+
+function getTrackWidthForCurrentView(baseWidth) {
+    const n = Number(baseWidth);
+    if (!Number.isFinite(n)) return baseWidth;
+    if (!skadiChat3DEnabled) return n;
+    return Math.max(1, Number((n * SKADI_TRACK_WIDTH_3D_FACTOR).toFixed(2)));
+}
+
+function refreshTrackWidthsForCurrentView() {
+    if (!map) return;
+    tracks.forEach((track) => {
+        if (!track || !track.lineLayerId || !map.getLayer(track.lineLayerId)) return;
+        const current = map.getPaintProperty(track.lineLayerId, 'line-width');
+        const numericCurrent = Number(current);
+        if (!Number.isFinite(numericCurrent)) return;
+        const baseWidth = skadiChat3DEnabled
+            ? numericCurrent / SKADI_TRACK_WIDTH_3D_FACTOR
+            : numericCurrent;
+        map.setPaintProperty(track.lineLayerId, 'line-width', getTrackWidthForCurrentView(baseWidth));
+    });
+}
+
 function applyBikeTrackJournalStyle(track, selected) {
     if (!track || track.dataType !== 'bike' || !map) return;
     if (!track.lineLayerId || !map.getLayer(track.lineLayerId)) return;
     const wVis = selected
         ? BIKE_TRACK_JOURNAL_STYLE.visibleWeightSelected
         : BIKE_TRACK_JOURNAL_STYLE.visibleWeightUnselected;
-    map.setPaintProperty(track.lineLayerId, 'line-width', wVis);
+    map.setPaintProperty(track.lineLayerId, 'line-width', getTrackWidthForCurrentView(wVis));
     if (map.getLayer(track.hitLayerId)) {
         map.setPaintProperty(track.hitLayerId, 'line-width', BIKE_TRACK_JOURNAL_STYLE.hitWeight);
     }
@@ -681,7 +705,7 @@ function buildSkadiTrackMapAdapter(track) {
             fn({
                 setStyle: (s) => {
                     if (s && s.weight != null && map && map.getLayer(track.lineLayerId)) {
-                        map.setPaintProperty(track.lineLayerId, 'line-width', s.weight);
+                        map.setPaintProperty(track.lineLayerId, 'line-width', getTrackWidthForCurrentView(s.weight));
                     }
                 },
                 getPopup: () => ({ isOpen: () => false }),
@@ -704,7 +728,7 @@ function buildSkadiTrackMapAdapter(track) {
                     layout: { 'line-join': 'round', 'line-cap': 'round' },
                     paint: {
                         'line-color': track.lineColor || '#3388ff',
-                        'line-width': 3,
+                        'line-width': getTrackWidthForCurrentView(3),
                         'line-opacity': 1
                     }
                 });
@@ -919,8 +943,8 @@ const projectColors = {
     'Bauges': '#674ea7',
     '4000': '#f1c232',
     'Aravis': '#a64d79',
-    'Morges to Como': '#34a853',
-    'Wien to Innsbruck': '#ea4335'
+    'Morges to Como': '#0000FF',
+    'Wien to Innsbruck': '#FF0000'
 };
 
 // Default color for activities without a project
@@ -1437,7 +1461,11 @@ function getActivityLinkText(url) {
 }
 
 function buildSummitPopupContent(name, altitude, project, status) {
-    const statusLabel = status === 'completed' ? 'Accompli' : 'À gravir';
+    const statusLabel = status === 'completed' ? 'Gravi' : 'À gravir';
+    const normalizedProject = normalizeProjectName(project || 'No Project');
+    const projectRow = normalizedProject === 'No Project'
+        ? ''
+        : `<b>Projet :</b> ${escapeHtml(normalizedProject)}<br>`;
     const titleHtml = altitude
         ? `<b>${escapeHtml(name)} (${altitude}m)</b>`
         : `<b>${escapeHtml(name)}</b>`;
@@ -1447,7 +1475,7 @@ function buildSummitPopupContent(name, altitude, project, status) {
             <button type="button" class="summit-popup-close" aria-label="Fermer la popup">×</button>
         </div>
         <div class="summit-popup-body">
-            <b>Projet :</b> ${escapeHtml(project)}<br>
+            ${projectRow}
             <b>Statut :</b> ${statusLabel}
         </div>
     `;
@@ -1732,7 +1760,7 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
                     return;
                 }
                 if (map.getLayer(track.lineLayerId)) {
-                    map.setPaintProperty(track.lineLayerId, 'line-width', 6);
+                    map.setPaintProperty(track.lineLayerId, 'line-width', getTrackWidthForCurrentView(6));
                 }
                 const maxW =
                     track.popupOptions && track.popupOptions.maxWidth != null
@@ -1761,7 +1789,7 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
                 });
                 p.on('close', () => {
                     if (map && map.getLayer(track.lineLayerId)) {
-                        map.setPaintProperty(track.lineLayerId, 'line-width', 3);
+                        map.setPaintProperty(track.lineLayerId, 'line-width', getTrackWidthForCurrentView(3));
                     }
                     if (map && map._skadiLinePopup === p) map._skadiLinePopup = null;
                 });
@@ -1805,7 +1833,7 @@ function focusOnGPXName(gpxName) {
         if (track.gpxName === gpxName) {
             track.adapter.bringToFront();
             if (map.getLayer(track.lineLayerId)) {
-                map.setPaintProperty(track.lineLayerId, 'line-width', 6);
+                map.setPaintProperty(track.lineLayerId, 'line-width', getTrackWidthForCurrentView(6));
             }
             if (track.bounds && track.bounds.isValid()) {
                 map.fitBounds(track.bounds, { padding: [50, 50] });
@@ -1843,7 +1871,7 @@ function focusOnGPXName(gpxName) {
                 });
                 p.on('close', () => {
                     if (map && map.getLayer(track.lineLayerId)) {
-                        map.setPaintProperty(track.lineLayerId, 'line-width', 3);
+                        map.setPaintProperty(track.lineLayerId, 'line-width', getTrackWidthForCurrentView(3));
                     }
                     if (map && map._skadiLinePopup === p) map._skadiLinePopup = null;
                 });
@@ -1851,7 +1879,7 @@ function focusOnGPXName(gpxName) {
                 map._skadiLinePopup = p;
             }
         } else if (map.getLayer(track.lineLayerId)) {
-            map.setPaintProperty(track.lineLayerId, 'line-width', 3);
+            map.setPaintProperty(track.lineLayerId, 'line-width', getTrackWidthForCurrentView(3));
         }
     });
 }
@@ -2778,6 +2806,7 @@ function enableSkadiChat3DMode() {
         }
 
         skadiChat3DEnabled = true;
+        refreshTrackWidthsForCurrentView();
 
         // Rotation controls: allow mouse rotation only. Touch rotation stays disabled.
         try {
@@ -2832,6 +2861,7 @@ function disableSkadiChat3DMode() {
         } catch (_e) {
             // ignore
         }
+        refreshTrackWidthsForCurrentView();
         updateMap3DToggleButton();
         return;
     }
@@ -2872,6 +2902,7 @@ function disableSkadiChat3DMode() {
         map.setPitch(pitchToRestore);
         map.setBearing(bearingToRestore);
         skadiChat3DEnabled = false;
+        refreshTrackWidthsForCurrentView();
     } catch (_e) {
         skadiChat3DEnabled = false;
     } finally {
