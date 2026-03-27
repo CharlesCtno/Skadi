@@ -2924,13 +2924,13 @@ le nom d'une activité
 Pour trouver les 3 activités qui te correspondent le mieux, donne-moi au moins une de ces infos :
 
 une distance (ex: "15km")
-une durée (ex: "3 heures" ou "2j" ou "1 jour")
+une durée (ex: "3h" ou "2j")
 un dénivelé (ex: "1000m")
 une cotation (ex: "T3")
-une localisation (ex: "près de Lausanne", "pres de Genève", "proche de Berne", "proche d'Annecy")
+une localisation (ex: "près de Lausanne","proche de Berne")
 Tu peux aussi demander l'avis de Charles en mentionnant son prénom.
 
-Pour tout réafficher sur la carte : écris « reset », « tous », « toute » ou « toutes ».
+Pour tout réafficher sur la carte : écris « reset », « tous ».
 
 Exemple: "randonnée près de Lausanne autour de 15km avec 1000m de dénivelé"`;
 let skadiHelpShown = false;
