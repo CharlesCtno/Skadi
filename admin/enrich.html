@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Skadi - Enrichissement</title>
+  <style>
+    :root {
+      --bg: #1b1f22;
+      --panel: #262b2f;
+      --text: #f2f2f2;
+      --muted: #b6c0c8;
+      --accent: #45818e;
+      --ok: #5dbb7a;
+      --err: #d96a6a;
+      --border: rgba(255, 255, 255, 0.16);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    .screen {
+      min-height: 100dvh;
+      padding: 14px;
+    }
+    .hidden { display: none !important; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .title {
+      margin: 4px 0 14px;
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+    .muted { color: var(--muted); }
+    .pin-wrap {
+      display: grid;
+      place-items: center;
+      gap: 16px;
+      min-height: 100dvh;
+      padding: 18px;
+    }
+    .pin-box {
+      width: 100%;
+      max-width: 420px;
+      text-align: center;
+    }
+    .trip-header {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: linear-gradient(var(--bg), rgba(27, 31, 34, 0.9));
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+    }
+    .points {
+      display: grid;
+      gap: 10px;
+      padding-bottom: 16px;
+    }
+    .point-item {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #22272b;
+      overflow: hidden;
+    }
+    .point-button {
+      width: 100%;
+      border: 0;
+      margin: 0;
+      background: transparent;
+      color: inherit;
+      text-align: left;
+      padding: 12px;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .point-main { display: grid; gap: 4px; }
+    .point-time { font-weight: 700; }
+    .point-coords { font-size: 0.9rem; color: var(--muted); }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #4a5158;
+      flex: 0 0 10px;
+    }
+    .dot.done { background: var(--ok); }
+    .editor {
+      border-top: 1px solid var(--border);
+      padding: 10px 12px 12px;
+      display: grid;
+      gap: 8px;
+    }
+    textarea, input[type="file"], button {
+      width: 100%;
+      min-height: 44px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #13181b;
+      color: var(--text);
+      padding: 10px 12px;
+      font: inherit;
+    }
+    textarea { resize: vertical; min-height: 92px; }
+    button {
+      background: var(--accent);
+      border-color: transparent;
+      font-weight: 700;
+    }
+    button:disabled { opacity: 0.6; }
+    .status { min-height: 20px; font-size: 0.9rem; }
+    .status.ok { color: var(--ok); }
+    .status.err { color: var(--err); }
+    .token-input {
+      margin-top: 12px;
+      background: #111518;
+    }
+  </style>
+</head>
+<body>
+  <section id="pin-screen" class="pin-wrap">
+    <div id="pin-box" class="card pin-box">
+      <div class="title">Accès admin (session)</div>
+      <div class="muted">Entrer le token GitHub pour cette session</div>
+      <input id="token-input" class="token-input" type="password" autocomplete="off" placeholder="github_pat_...">
+      <button id="enter-btn" type="button">Entrer</button>
+      <div id="pin-error" class="status err"></div>
+    </div>
+  </section>
+
+  <main id="app" class="screen hidden">
+    <div class="trip-header">
+      <div class="title">Skadi - Enrichissement des points</div>
+      <div id="trip-meta" class="muted"></div>
+    </div>
+    <div id="empty-state" class="card hidden">Aucun voyage actif pour le moment</div>
+    <div id="points-list" class="points"></div>
+  </main>
+
+  <script>
+    const GH_OWNER = 'CharlesCtno';
+    const GH_REPO = 'Skadi';
+    const GH_WORKFLOW = 'adventure_live_dispatch.yml';
+    const SESSION_KEY = 'skadi_admin_token_ok';
+    const SESSION_TOKEN_KEY = 'skadi_admin_token';
+
+    let activeTripId = '';
+    let points = [];
+    let expandedPointId = '';
+    let sessionToken = '';
+
+    function hasEnrichment(p) {
+      return !!(String(p.note || '').trim() || String(p.photo || '').trim());
+    }
+
+    function parseIso(iso) {
+      const d = new Date(iso);
+      if (!Number.isFinite(d.getTime())) return null;
+      return d;
+    }
+
+    function formatPointTs(iso) {
+      const d = parseIso(iso);
+      if (!d) return 'Heure inconnue';
+      const pad = (v) => String(v).padStart(2, '0');
+      return `${pad(d.getHours())}:${pad(d.getMinutes())} — ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
+    }
+
+    function formatCoords(p) {
+      return `${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}`;
+    }
+
+    async function fetchJsonOrNull(path) {
+      const res = await fetch(path, { cache: 'no-store' });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    }
+
+    function sortNewestFirst(rawPoints) {
+      return rawPoints
+        .filter((p) => p && Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+        .sort((a, b) => Date.parse(String(b.ts || '')) - Date.parse(String(a.ts || '')));
+    }
+
+    function buildDispatchPayload(pointId, note, photoB64) {
+      return {
+        ref: 'main',
+        inputs: {
+          action: 'enrich_point',
+          trip_id: activeTripId,
+          point_id: pointId,
+          note: note || '',
+          photo: photoB64 || ''
+        }
+      };
+    }
+
+    async function dispatchEnrichPoint(pointId, note, photoB64) {
+      if (!sessionToken.trim()) throw new Error('Token GitHub manquant');
+      const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/actions/workflows/${GH_WORKFLOW}/dispatches`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${sessionToken}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(buildDispatchPayload(pointId, note, photoB64))
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(`Dispatch failed (${res.status}) ${txt}`);
+      }
+    }
+
+    function fileToDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Lecture image impossible'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function loadImage(dataUrl) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Image invalide'));
+        img.src = dataUrl;
+      });
+    }
+
+    async function resizeImageBase64(file) {
+      if (!file) return '';
+      const dataUrl = await fileToDataUrl(file);
+      const img = await loadImage(dataUrl);
+      const maxW = 1200;
+      let w = img.width;
+      let h = img.height;
+      if (w > maxW) {
+        const ratio = maxW / w;
+        w = Math.round(w * ratio);
+        h = Math.round(h * ratio);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const out = canvas.toDataURL('image/jpeg', 0.85);
+      const i = out.indexOf(',');
+      return i >= 0 ? out.slice(i + 1) : '';
+    }
+
+    function renderPoints() {
+      const list = document.getElementById('points-list');
+      list.innerHTML = '';
+      for (const point of points) {
+        const pointId = String(point.ts || '').trim();
+        const item = document.createElement('article');
+        item.className = 'point-item';
+
+        const btn = document.createElement('button');
+        btn.className = 'point-button';
+        btn.type = 'button';
+        btn.setAttribute('aria-expanded', pointId === expandedPointId ? 'true' : 'false');
+        btn.innerHTML = `
+          <div class="point-main">
+            <div class="point-time">${formatPointTs(point.ts)}</div>
+            <div class="point-coords">${formatCoords(point)}</div>
+          </div>
+          <span class="dot ${hasEnrichment(point) ? 'done' : ''}"></span>
+        `;
+        btn.addEventListener('click', () => {
+          expandedPointId = expandedPointId === pointId ? '' : pointId;
+          renderPoints();
+        });
+        item.appendChild(btn);
+
+        if (expandedPointId === pointId) {
+          const editor = document.createElement('form');
+          editor.className = 'editor';
+          editor.innerHTML = `
+            <textarea placeholder="Une courte note sur ce moment...">${point.note ? String(point.note) : ''}</textarea>
+            <input type="file" accept="image/*">
+            <button type="submit">Enregistrer</button>
+            <div class="status"></div>
+          `;
+          editor.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const textarea = editor.querySelector('textarea');
+            const fileInput = editor.querySelector('input[type="file"]');
+            const submitBtn = editor.querySelector('button[type="submit"]');
+            const status = editor.querySelector('.status');
+            status.className = 'status';
+            status.textContent = '';
+            submitBtn.disabled = true;
+            try {
+              const selected = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+              const photoB64 = selected ? await resizeImageBase64(selected) : '';
+              await dispatchEnrichPoint(pointId, textarea.value, photoB64);
+              point.note = textarea.value.trim() || point.note || '';
+              if (photoB64) {
+                point.photo = `live/trips/${activeTripId}/photos/${pointId}.jpg`;
+              }
+              status.className = 'status ok';
+              status.textContent = 'Enregistré ✓';
+              renderPoints();
+            } catch (_err) {
+              status.className = 'status err';
+              status.textContent = 'Erreur, réessaie';
+            } finally {
+              submitBtn.disabled = false;
+            }
+          });
+          item.appendChild(editor);
+        }
+        list.appendChild(item);
+      }
+    }
+
+    async function loadData() {
+      const active = await fetchJsonOrNull('live/activeTrip.json');
+      const tripMeta = document.getElementById('trip-meta');
+      const empty = document.getElementById('empty-state');
+      if (!active || !active.isActive || !String(active.tripId || '').trim()) {
+        activeTripId = '';
+        points = [];
+        tripMeta.textContent = '';
+        empty.classList.remove('hidden');
+        document.getElementById('points-list').innerHTML = '';
+        return;
+      }
+      activeTripId = String(active.tripId).trim();
+      tripMeta.textContent = `${active.tripName || activeTripId} (${activeTripId})`;
+      empty.classList.add('hidden');
+      const doc = await fetchJsonOrNull(`live/trips/${activeTripId}/points.json`);
+      points = sortNewestFirst(doc && Array.isArray(doc.points) ? doc.points : []);
+      renderPoints();
+    }
+
+    function verifyTokenAndEnter() {
+      const error = document.getElementById('pin-error');
+      const tokenInput = document.getElementById('token-input');
+      const tokenValue = String(tokenInput && tokenInput.value ? tokenInput.value : '').trim();
+      if (tokenValue) {
+        sessionToken = tokenValue;
+        sessionStorage.setItem(SESSION_KEY, '1');
+        sessionStorage.setItem(SESSION_TOKEN_KEY, tokenValue);
+        document.getElementById('pin-screen').classList.add('hidden');
+        document.getElementById('app').classList.remove('hidden');
+        loadData().catch(() => {
+          const empty = document.getElementById('empty-state');
+          empty.textContent = 'Erreur de chargement des données live';
+          empty.classList.remove('hidden');
+        });
+        return;
+      }
+      error.textContent = 'Token GitHub requis';
+      tokenInput.focus();
+    }
+
+    function setupAccessInput() {
+      const tokenInput = document.getElementById('token-input');
+      const enterBtn = document.getElementById('enter-btn');
+      if (enterBtn) enterBtn.addEventListener('click', verifyTokenAndEnter);
+      if (tokenInput) {
+        tokenInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') verifyTokenAndEnter();
+        });
+        tokenInput.focus();
+      }
+    }
+
+    function bootstrap() {
+      if (sessionStorage.getItem(SESSION_KEY) === '1' && sessionStorage.getItem(SESSION_TOKEN_KEY)) {
+        sessionToken = String(sessionStorage.getItem(SESSION_TOKEN_KEY) || '');
+        document.getElementById('pin-screen').classList.add('hidden');
+        document.getElementById('app').classList.remove('hidden');
+        loadData().catch(() => {
+          const empty = document.getElementById('empty-state');
+          empty.textContent = 'Erreur de chargement des données live';
+          empty.classList.remove('hidden');
+        });
+      } else {
+        setupAccessInput();
+      }
+    }
+
+    bootstrap();
+  </script>
+</body>
+</html>

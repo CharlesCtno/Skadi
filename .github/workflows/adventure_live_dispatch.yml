@@ -11,6 +11,7 @@ on:
           - start_trip
           - start_live_day
           - add_point
+          - enrich_point
           - stop_live_day
           - stop_trip
       trip_id:
@@ -29,9 +30,31 @@ on:
         description: "Longitude (required for add_point)"
         required: false
         type: string
+      lon:
+        description: "Longitude alias for add_point (optional)"
+        required: false
+        type: string
+      accuracy:
+        description: "GPS accuracy in meters (optional for add_point)"
+        required: false
+        type: string
       ts:
         description: "ISO timestamp local timezone (optional for add_point)"
         required: false
+        type: string
+      point_id:
+        description: "Point identifier (uses point ts for enrich_point)"
+        required: false
+        type: string
+      note:
+        description: "Note text (optional for enrich_point)"
+        required: false
+        default: ""
+        type: string
+      photo:
+        description: "Base64 encoded JPEG (optional for enrich_point)"
+        required: false
+        default: ""
         type: string
 
 permissions:
@@ -63,7 +86,12 @@ jobs:
             --trip-name "${{ inputs.trip_name }}" \
             --lat "${{ inputs.lat }}" \
             --lng "${{ inputs.lng }}" \
-            --ts "${{ inputs.ts }}"
+            --lon "${{ inputs.lon }}" \
+            --accuracy "${{ inputs.accuracy }}" \
+            --ts "${{ inputs.ts }}" \
+            --point-id "${{ inputs.point_id }}" \
+            --note "${{ inputs.note }}" \
+            --photo "${{ inputs.photo }}"
 
       - name: Commit and push live state
         run: |

@@ -84,7 +84,7 @@ The 3 matching activities are displayed on the map, all others are hidden. Skadi
 
 **3D map mode (implemented):** When Mode 2 triggers, Skadi enables a true 3D Mapbox view by turning on terrain (DEM) and 3D building extrusions, tilts the camera to about **20°**, allows **mouse rotation** (drag), clamps pitch to a safe **0°..70°** range, and keeps **touch rotation disabled**. When the next chat request is processed (Mode 1/filter), Skadi resets back to 2D.
 
-### Adventure mode (bikepacking live) - planned
+### Adventure mode (bikepacking live) - in progress
 Bikepacking is adventure-driven. “Adventure mode” lets you trigger a live trip presence, then publish GPS points while riding. The public site only reads this data; only you can publish it (no public web-login).
 
 Key rules
@@ -92,8 +92,8 @@ Key rules
 - `tripId` format: `YYYY-MM-DD_name` (chosen by you).
 
 Phases
-- Phase 1: Trip banner + live polyline (GPS only)
-- Phase 2: Add photos and short text later (after the ride), associated to the recorded points
+- Phase 1: Trip banner + live polyline (GPS only) - done
+- Phase 2: Point enrichment (notes + photo) via mobile admin - started
 
 Activation and live flow
 1. At the beginning of a trip, you activate Adventure mode.
@@ -127,10 +127,20 @@ Near-term phone automation pattern (next step)
   - retry once on transient network failure
   - deduplicate if point moved less than ~20–50m
 
-Later enrichment (photos and text)
-- After the trip (or later when you have signal), you can attach photos and a short note.
-- Photos and text are stored as additional JSON and/or metadata files under `live/trips/<tripId>/` and referenced from the displayed points.
-- Updates should be idempotent: re-pushing notes/photos should not break already-rendered points.
+Enrichment model (phase 2)
+- `pointId` equals point `ts`.
+- Enrichment updates run through the same workflow with action `enrich_point`.
+- Each point can carry:
+  - `note` text
+  - `photo` path (`live/trips/<tripId>/photos/<pointId>.jpg`)
+- Frontend rule:
+  - plain points stay simple white dots
+  - enriched points are highlighted and open a richer popup (note + image on demand)
+- Updates are idempotent: re-sending same payload does not duplicate data.
+
+Operator tooling (implemented)
+- Mobile admin page: `admin/enrich.html` (PIN in `sessionStorage`) for note/photo attach during breaks.
+- Phone loop documentation: `docs/ADVENTURE_MODE_AUTOMATE_LOOP.md` for Automate background posting with offline buffer.
 
 Authentication / “only you can trigger it” (approach A)
 - No login/auth UI is required on the public site.

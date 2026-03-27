@@ -39,8 +39,11 @@ const ADVENTURE_LIVE_CASING_LAYER_ID = 'adventure-live-line-casing';
 const ADVENTURE_LIVE_LAYER_ID = 'adventure-live-line';
 const ADVENTURE_LATEST_SOURCE_ID = 'adventure-latest-source';
 const ADVENTURE_LATEST_LAYER_ID = 'adventure-latest-dot';
+const ADVENTURE_POINTS_SOURCE_ID = 'adventure-points-source';
+const ADVENTURE_POINTS_LAYER_ID = 'adventure-points-layer';
 const ADVENTURE_LOCAL_TRIP_ID = 'local-debug-session';
 const ADVENTURE_LOCAL_TRIP_NAME = 'Dream adventure';
+const ADVENTURE_ENRICHED_COLOR_FALLBACK = '#45818e';
 
 let adventureModeActive = false;
 let adventureDailyLiveSharingActive = false;
@@ -48,6 +51,7 @@ let adventureRemoteLiveDayActive = false;
 let adventureLocalDebugPoints = [];
 let adventureLastError = '';
 let adventureLastRefreshAt = null;
+let adventurePointLayerHandlersBound = false;
 let adventureLiveState = {
     isActive: false,
     tripId: '',
@@ -117,7 +121,8 @@ function normalizeAdventurePoint(rawPoint, idx) {
         lat,
         lng,
         ts: Number.isFinite(tsMs) ? new Date(tsMs).toISOString() : new Date(Date.now() + idx).toISOString(),
-        note: rawPoint.note == null ? null : String(rawPoint.note),
+        note: rawPoint.note == null ? '' : String(rawPoint.note),
+        photo: rawPoint.photo == null ? '' : String(rawPoint.photo),
         photos: Array.isArray(rawPoint.photos) ? rawPoint.photos.slice() : []
     };
 }
@@ -150,6 +155,80 @@ function buildAdventureLatestPointFeatureCollection(points) {
     };
 }
 
+function buildAdventurePointsFeatureCollection(points) {
+    const latestTs = points.length ? points[points.length - 1].ts : '';
+    return {
+        type: 'FeatureCollection',
+        features: points
+            .filter((p) => p.ts !== latestTs)
+            .map((p) => {
+                const note = String(p.note || '').trim();
+                const photo = String(p.photo || '').trim();
+                const enriched = !!(note || photo);
+                return {
+                    type: 'Feature',
+                    geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+                    properties: {
+                        ts: p.ts,
+                        lat: p.lat,
+                        lng: p.lng,
+                        note,
+                        photo,
+                        enriched: enriched ? 1 : 0
+                    }
+                };
+            })
+    };
+}
+
+function escapeHtml(s) {
+    return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function formatAdventurePointTs(ts) {
+    const d = new Date(ts);
+    if (!Number.isFinite(d.getTime())) return 'Heure inconnue';
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    return `${hh}:${mm} — ${dd}/${mo}`;
+}
+
+function buildAdventurePointPopupHtml(pointProps, tripId) {
+    const ts = formatAdventurePointTs(pointProps.ts || '');
+    const lat = Number(pointProps.lat);
+    const lng = Number(pointProps.lng);
+    const coords = (Number.isFinite(lat) && Number.isFinite(lng))
+        ? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+        : 'coordonnées inconnues';
+    const note = String(pointProps.note || '').trim();
+    const photo = String(pointProps.photo || '').trim();
+    if (!note && !photo) {
+        return `
+            <div class="track-popup-body">
+              <p><b>Dernier point</b> ${escapeHtml(ts)}</p>
+              <p><b>Coordonnées</b> ${escapeHtml(coords)}</p>
+            </div>
+        `;
+    }
+    const defaultPhotoPath = `live/trips/${tripId}/photos/${String(pointProps.ts || '').trim()}.jpg`;
+    const photoPath = photo || defaultPhotoPath;
+    return `
+        <div class="track-popup-body">
+          <p><b>Point enrichi</b> ${escapeHtml(ts)}</p>
+          <p><b>Coordonnées</b> ${escapeHtml(coords)}</p>
+          ${note ? `<p style="font-style: italic;">${escapeHtml(note)}</p>` : ''}
+          ${photoPath ? `<img src="${escapeHtml(photoPath)}" alt="Photo du point" style="display:block;width:100%;margin-top:8px;border-radius:6px;">` : ''}
+        </div>
+    `;
+}
+
 async function fetchJsonOrNull(url) {
     try {
         const res = await fetch(url, { cache: 'no-store' });
@@ -166,7 +245,7 @@ async function fetchJsonOrNull(url) {
 async function fetchAdventureLiveStateFromRepo() {
     const active = await fetchJsonOrNull(ADVENTURE_ACTIVE_TRIP_PATH);
     if (!active || !active.isActive) {
-        return { isActive: false, tripId: '', tripName: '', points: [], updatedAt: '', liveDayActive: false };
+        return { isActive: false, tripId: '', tripName: '', points: [], updatedAt: '', liveDayActive: false, projectColor: '' };
     }
     const tripId = String(active.tripId || '').trim();
     if (!tripId) {
@@ -185,7 +264,8 @@ async function fetchAdventureLiveStateFromRepo() {
         tripName: String(active.tripName || tripId),
         points,
         updatedAt: String(active.updatedAt || ''),
-        liveDayActive: !!active.liveDayActive
+        liveDayActive: !!active.liveDayActive,
+        projectColor: String(active.projectColor || '').trim()
     };
 }
 
@@ -200,7 +280,8 @@ function getEffectiveAdventureLiveState(remoteState) {
             tripName: ADVENTURE_LOCAL_TRIP_NAME,
             points,
             updatedAt: points.length ? points[points.length - 1].ts : new Date().toISOString(),
-            liveDayActive: !!adventureDailyLiveSharingActive
+            liveDayActive: !!adventureDailyLiveSharingActive,
+            projectColor: ADVENTURE_ENRICHED_COLOR_FALLBACK
         };
     }
     return remoteState;
@@ -945,6 +1026,12 @@ function removeAdventureLiveLayers() {
     try {
         if (map.getSource(ADVENTURE_LATEST_SOURCE_ID)) map.removeSource(ADVENTURE_LATEST_SOURCE_ID);
     } catch (_e) {}
+    try {
+        if (map.getLayer(ADVENTURE_POINTS_LAYER_ID)) map.removeLayer(ADVENTURE_POINTS_LAYER_ID);
+    } catch (_e) {}
+    try {
+        if (map.getSource(ADVENTURE_POINTS_SOURCE_ID)) map.removeSource(ADVENTURE_POINTS_SOURCE_ID);
+    } catch (_e) {}
 }
 
 function renderAdventureLiveLayers(state) {
@@ -956,6 +1043,8 @@ function renderAdventureLiveLayers(state) {
 
     const lineData = buildAdventureLineFeatureCollection(state.points);
     const latestData = buildAdventureLatestPointFeatureCollection(state.points);
+    const pointsData = buildAdventurePointsFeatureCollection(state.points);
+    const enrichedColor = String(state.projectColor || '').trim() || ADVENTURE_ENRICHED_COLOR_FALLBACK;
 
     if (!map.getSource(ADVENTURE_LIVE_SOURCE_ID)) {
         map.addSource(ADVENTURE_LIVE_SOURCE_ID, { type: 'geojson', data: lineData });
@@ -1007,6 +1096,52 @@ function renderAdventureLiveLayers(state) {
             }
         });
     }
+
+    if (!map.getSource(ADVENTURE_POINTS_SOURCE_ID)) {
+        map.addSource(ADVENTURE_POINTS_SOURCE_ID, { type: 'geojson', data: pointsData });
+    } else {
+        map.getSource(ADVENTURE_POINTS_SOURCE_ID).setData(pointsData);
+    }
+    if (!map.getLayer(ADVENTURE_POINTS_LAYER_ID)) {
+        map.addLayer({
+            id: ADVENTURE_POINTS_LAYER_ID,
+            type: 'circle',
+            source: ADVENTURE_POINTS_SOURCE_ID,
+            paint: {
+                'circle-radius': ['case', ['==', ['get', 'enriched'], 1], 6, 4],
+                'circle-color': ['case', ['==', ['get', 'enriched'], 1], enrichedColor, '#ffffff'],
+                'circle-stroke-color': '#2a2a2a',
+                'circle-stroke-width': ['case', ['==', ['get', 'enriched'], 1], 2, 1.2]
+            }
+        });
+        if (!adventurePointLayerHandlersBound) {
+            map.on('click', ADVENTURE_POINTS_LAYER_ID, function(e) {
+                const feature = e && e.features && e.features[0];
+                if (!feature) return;
+                const props = feature.properties || {};
+                const coords = feature.geometry && feature.geometry.coordinates;
+                if (!coords || coords.length < 2) return;
+                const html = buildAdventurePointPopupHtml(props, adventureLiveState.tripId || '');
+                new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: 'track-popup' })
+                    .setLngLat(coords)
+                    .setHTML(html)
+                    .addTo(map);
+            });
+            map.on('mouseenter', ADVENTURE_POINTS_LAYER_ID, function() {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', ADVENTURE_POINTS_LAYER_ID, function() {
+                map.getCanvas().style.cursor = '';
+            });
+            adventurePointLayerHandlersBound = true;
+        }
+    } else {
+        map.setPaintProperty(
+            ADVENTURE_POINTS_LAYER_ID,
+            'circle-color',
+            ['case', ['==', ['get', 'enriched'], 1], enrichedColor, '#ffffff']
+        );
+    }
 }
 
 function updateAdventureLocalControlsUI() {
@@ -1051,7 +1186,7 @@ function updateAdventureUI() {
 async function refreshAdventureLiveState(reason) {
     const why = reason || 'manual';
     adventureLastError = '';
-    let remoteState = { isActive: false, tripId: '', tripName: '', points: [], updatedAt: '' };
+    let remoteState = { isActive: false, tripId: '', tripName: '', points: [], updatedAt: '', projectColor: '' };
     try {
         remoteState = await fetchAdventureLiveStateFromRepo();
     } catch (err) {

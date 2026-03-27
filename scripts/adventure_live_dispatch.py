@@ -1,4 +1,6 @@
 import argparse
+import base64
+import binascii
 import json
 import re
 import sys
@@ -39,10 +41,11 @@ def validate_trip_id(trip_id: str) -> str:
     return value
 
 
-def parse_point(lat_raw: str, lng_raw: str, ts_raw: str) -> Dict[str, Any]:
+def parse_point(lat_raw: str, lng_raw: str, lon_raw: str, ts_raw: str, accuracy_raw: str) -> Dict[str, Any]:
+    lng_source = (lng_raw or "").strip() or (lon_raw or "").strip()
     try:
         lat = float(lat_raw)
-        lng = float(lng_raw)
+        lng = float(lng_source)
     except Exception as exc:
         raise ValueError(f"invalid lat/lng: {exc}") from exc
     if lat < -90 or lat > 90:
@@ -50,11 +53,22 @@ def parse_point(lat_raw: str, lng_raw: str, ts_raw: str) -> Dict[str, Any]:
     if lng < -180 or lng > 180:
         raise ValueError("lng must be between -180 and 180")
     ts = (ts_raw or "").strip() or iso_now_local()
-    return {"lat": lat, "lng": lng, "ts": ts}
+    point = {"lat": lat, "lng": lng, "ts": ts}
+    accuracy = (accuracy_raw or "").strip()
+    if accuracy:
+        try:
+            point["accuracy"] = float(accuracy)
+        except Exception:
+            pass
+    return point
 
 
 def get_points_path(trip_id: str) -> Path:
     return TRIPS_DIR / trip_id / "points.json"
+
+
+def get_photo_path(trip_id: str, point_id: str) -> Path:
+    return TRIPS_DIR / trip_id / "photos" / f"{point_id}.jpg"
 
 
 def sorted_points(points: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -121,6 +135,68 @@ def handle_add_point(trip_id: str, point: Dict[str, Any]) -> None:
     write_json(ACTIVE_TRIP_PATH, active)
 
 
+def decode_photo_base64(photo_raw: str) -> bytes:
+    raw = (photo_raw or "").strip()
+    if not raw:
+        return b""
+    if raw.startswith("data:"):
+        comma_idx = raw.find(",")
+        if comma_idx == -1:
+            raise ValueError("invalid data URL for photo")
+        raw = raw[comma_idx + 1 :]
+    try:
+        return base64.b64decode(raw, validate=True)
+    except binascii.Error as exc:
+        raise ValueError(f"invalid base64 photo payload: {exc}") from exc
+
+
+def handle_enrich_point(trip_id: str, point_id: str, note: str, photo_raw: str) -> None:
+    point_id = (point_id or "").strip()
+    if not point_id:
+        raise ValueError("point_id is required for enrich_point")
+
+    points_path = get_points_path(trip_id)
+    points_doc = read_json(points_path, {"tripId": trip_id, "points": []})
+    points = list(points_doc.get("points") or [])
+
+    target_index = -1
+    for i, point in enumerate(points):
+        if str(point.get("ts") or "").strip() == point_id:
+            target_index = i
+            break
+    if target_index < 0:
+        raise ValueError("point_id not found in trip points")
+
+    target = dict(points[target_index])
+    changed = False
+
+    note_value = (note or "").strip()
+    if note_value:
+        if str(target.get("note") or "") != note_value:
+            target["note"] = note_value
+            changed = True
+
+    photo_bytes = decode_photo_base64(photo_raw)
+    if photo_bytes:
+        photo_path = get_photo_path(trip_id, point_id)
+        photo_rel = f"live/trips/{trip_id}/photos/{point_id}.jpg"
+        existing = b""
+        if photo_path.exists():
+            existing = photo_path.read_bytes()
+        if existing != photo_bytes:
+            photo_path.parent.mkdir(parents=True, exist_ok=True)
+            photo_path.write_bytes(photo_bytes)
+        if str(target.get("photo") or "") != photo_rel:
+            target["photo"] = photo_rel
+            changed = True
+
+    if changed:
+        points[target_index] = target
+        points_doc["tripId"] = trip_id
+        points_doc["points"] = points
+        write_json(points_path, points_doc)
+
+
 def handle_stop_trip(trip_id: str) -> None:
     active = ensure_active_shape(read_json(ACTIVE_TRIP_PATH, {}))
     if active.get("tripId") and active.get("tripId") != trip_id:
@@ -138,12 +214,17 @@ def handle_stop_trip(trip_id: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Apply adventure live event to JSON files.")
-    parser.add_argument("--action", required=True, choices=["start_trip", "start_live_day", "add_point", "stop_live_day", "stop_trip"])
+    parser.add_argument("--action", required=True, choices=["start_trip", "start_live_day", "add_point", "enrich_point", "stop_live_day", "stop_trip"])
     parser.add_argument("--trip-id", required=True)
     parser.add_argument("--trip-name", default="")
     parser.add_argument("--lat", default="")
     parser.add_argument("--lng", default="")
+    parser.add_argument("--lon", default="")
+    parser.add_argument("--accuracy", default="")
     parser.add_argument("--ts", default="")
+    parser.add_argument("--point-id", default="")
+    parser.add_argument("--note", default="")
+    parser.add_argument("--photo", default="")
     args = parser.parse_args()
 
     try:
@@ -156,8 +237,10 @@ def main() -> int:
         elif action == "stop_live_day":
             handle_start_or_stop_live_day(trip_id, False)
         elif action == "add_point":
-            point = parse_point(args.lat, args.lng, args.ts)
+            point = parse_point(args.lat, args.lng, args.lon, args.ts, args.accuracy)
             handle_add_point(trip_id, point)
+        elif action == "enrich_point":
+            handle_enrich_point(trip_id, args.point_id, args.note, args.photo)
         elif action == "stop_trip":
             handle_stop_trip(trip_id)
         else:

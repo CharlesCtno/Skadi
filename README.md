@@ -74,6 +74,9 @@ Adventure mode now has an MVP "live trip" path for bikepacking:
   - `live/activeTrip.json`
   - `live/trips/<tripId>/points.json`
   - see `docs/ADVENTURE_MODE_LIVE_SCHEMA.md`
+- Point enrichment admin page:
+  - `admin/enrich.html` (PIN gate + note/photo submit)
+  - dispatches `enrich_point` through the same workflow endpoint
 
 ### Triggering from phone (current setup)
 
@@ -86,12 +89,13 @@ Adventure mode now has an MVP "live trip" path for bikepacking:
   - Add Point (auto location)
 - Request templates + headers:
   - see `docs/ADVENTURE_MODE_TASKER_MVP.md`
+  - see `docs/ADVENTURE_MODE_AUTOMATE_LOOP.md` (background loop + offline buffer)
 
 ### Next steps for Adventure Mode
 
 - Merge phone UX into a single launcher (or fully Automate-based flow).
 - Add automatic periodic/location-aware point posting while trip + live day are active.
-- Add manual debug enrichment for points (`note`, `photos`) before full automation.
+- Expand enrichment model (`note`, `photo`) into multi-photo and richer journal snippets.
 - Move from phone-side token usage to safer auth patterns over time.
 
 ### Security notes
@@ -109,10 +113,12 @@ Adventure mode now has an MVP "live trip" path for bikepacking:
 - `docs/BIKE_SHEET_SCHEMA.md` – Bike tab column layout (A–J)
 - `docs/ADVENTURE_MODE_LIVE_SCHEMA.md` – Adventure live JSON schema (`activeTrip.json`, `points.json`)
 - `docs/ADVENTURE_MODE_TASKER_MVP.md` – Phone trigger request templates for HTTP Shortcuts / Automate
+- `docs/ADVENTURE_MODE_AUTOMATE_LOOP.md` – Automate background loop + offline buffer strategy
+- `admin/enrich.html` – Mobile admin page (PIN) to enrich points with note/photo
 - `scripts/strava_sync.py` – Fetches a named Strava activity; `--destination sommets|bikepacking` selects Progrès (OSM, summits layout) vs Bikepacking (A–J, no OSM); pushes GPX to `data/raw/` or `data/bike/raw/`
 - `scripts/strava_backfill_photos.py` – One-time backfill of photo URLs into column S for existing activities
 - `scripts/convert_gpx.py` – Converts GPX files to GeoJSON (run automatically via GitHub Actions)
-- `scripts/adventure_live_dispatch.py` – Applies live trip actions (`start_trip`, `start_live_day`, `add_point`, `stop_live_day`, `stop_trip`)
+- `scripts/adventure_live_dispatch.py` – Applies live trip actions (`start_trip`, `start_live_day`, `add_point`, `enrich_point`, `stop_live_day`, `stop_trip`)
 - `scripts/test_sheet_sync.py` – Local test script to simulate a Strava sync without API calls
 - `.github/workflows/strava_sync.yml` – Manual trigger: activity name + destination (`sommets` / `bikepacking`), runs full sync
 - `.github/workflows/convert_gpx.yml` – Auto-triggered when GPX files are pushed to raw folders

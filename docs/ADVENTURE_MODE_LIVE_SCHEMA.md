@@ -50,11 +50,15 @@ Each point:
 - `lat` (`number`, required): latitude in decimal degrees.
 - `lng` (`number`, required): longitude in decimal degrees.
 - `ts` (`string`, required): ISO timestamp.
+- `accuracy` (`number`, optional): GPS accuracy in meters.
 
 ## Forward-compatible enrichment (next phase)
 
-The point model is intentionally extensible. Future optional fields:
-- `note` (`string`)
-- `photos` (`string[]`, URL list)
+For phase 2 enrichment, `pointId` is the point `ts` value (string equality).
 
-Current rendering ignores unknown fields and only uses `lat/lng/ts`.
+Optional enrichment fields on a point:
+- `note` (`string`): short text attached to the point.
+- `photo` (`string`): repo-relative path to one photo, e.g. `live/trips/<tripId>/photos/<pointId>.jpg`.
+- `photos` (`string[]`, optional legacy/future format): optional list of photo URLs.
+
+Current rendering uses `lat/lng/ts` for geometry and displays `note/photo` when available.
