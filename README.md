@@ -75,7 +75,7 @@ Adventure mode now has an MVP "live trip" path for bikepacking:
   - `live/trips/<tripId>/points.json`
   - see `docs/ADVENTURE_MODE_LIVE_SCHEMA.md`
 - Point enrichment admin page:
-  - `admin/enrich.html` (PIN gate + note/photo submit)
+  - `admin/enrich.html` (session GitHub token + note/photo submit; loads `live/` JSON from site root so it works under `/admin/`)
   - dispatches `enrich_point` through the same workflow endpoint
 
 ### Triggering from phone (current setup)
@@ -114,7 +114,7 @@ Adventure mode now has an MVP "live trip" path for bikepacking:
 - `docs/ADVENTURE_MODE_LIVE_SCHEMA.md` – Adventure live JSON schema (`activeTrip.json`, `points.json`)
 - `docs/ADVENTURE_MODE_TASKER_MVP.md` – Phone trigger request templates for HTTP Shortcuts / Automate
 - `docs/ADVENTURE_MODE_AUTOMATE_LOOP.md` – Automate background loop + offline buffer strategy
-- `admin/enrich.html` – Mobile admin page (PIN) to enrich points with note/photo
+- `admin/enrich.html` – Mobile admin page (session token) to enrich points with note/photo; resolves `live/` paths from repo root
 - `scripts/strava_sync.py` – Fetches a named Strava activity; `--destination sommets|bikepacking` selects Progrès (OSM, summits layout) vs Bikepacking (A–J, no OSM); pushes GPX to `data/raw/` or `data/bike/raw/`
 - `scripts/strava_backfill_photos.py` – One-time backfill of photo URLs into column S for existing activities
 - `scripts/convert_gpx.py` – Converts GPX files to GeoJSON (run automatically via GitHub Actions)
