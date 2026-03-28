@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- skadi-admin-enrich v4: photo via Contents API + enrich_point photo_uploaded -->
+<!-- skadi-admin-enrich v5: mobile image decode (createImageBitmap / object URL before FileReader) -->
 <html lang="fr">
 <head>
   <meta charset="utf-8">
@@ -291,40 +291,95 @@
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = () => reject(new Error('Lecture image impossible'));
+        reader.onerror = () => reject(new Error('FileReader indisponible pour ce fichier'));
         reader.readAsDataURL(file);
       });
     }
 
-    function loadImage(dataUrl) {
+    function loadImageFromSrc(src) {
       return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => resolve(img);
         img.onerror = () => reject(new Error('Image invalide'));
-        img.src = dataUrl;
+        img.src = src;
       });
+    }
+
+    /**
+     * Decode image without FileReader first (mobile-friendly: HEIC/URI issues).
+     * Order: createImageBitmap → object URL → FileReader + data URL.
+     */
+    async function fileToCanvasResized(file, maxW) {
+      if (typeof createImageBitmap === 'function') {
+        try {
+          const bmp = await createImageBitmap(file);
+          let w = bmp.width;
+          let h = bmp.height;
+          if (w > maxW) {
+            const ratio = maxW / w;
+            w = Math.round(w * ratio);
+            h = Math.round(h * ratio);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
+          bmp.close();
+          return canvas;
+        } catch (_e) { /* try next */ }
+      }
+      const objectUrl = URL.createObjectURL(file);
+      try {
+        const img = await loadImageFromSrc(objectUrl);
+        let w = img.width;
+        let h = img.height;
+        if (w > maxW) {
+          const ratio = maxW / w;
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        return canvas;
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
     }
 
     async function resizeImageBase64(file) {
       if (!file) return '';
-      const dataUrl = await fileToDataUrl(file);
-      const img = await loadImage(dataUrl);
       const maxW = 1200;
-      let w = img.width;
-      let h = img.height;
-      if (w > maxW) {
-        const ratio = maxW / w;
-        w = Math.round(w * ratio);
-        h = Math.round(h * ratio);
+      try {
+        const canvas = await fileToCanvasResized(file, maxW);
+        const out = canvas.toDataURL('image/jpeg', 0.85);
+        const i = out.indexOf(',');
+        return i >= 0 ? out.slice(i + 1) : '';
+      } catch (_e1) {
+        try {
+          const dataUrl = await fileToDataUrl(file);
+          const img = await loadImageFromSrc(dataUrl);
+          let w = img.width;
+          let h = img.height;
+          if (w > maxW) {
+            const ratio = maxW / w;
+            w = Math.round(w * ratio);
+            h = Math.round(h * ratio);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          const out = canvas.toDataURL('image/jpeg', 0.85);
+          const i = out.indexOf(',');
+          return i >= 0 ? out.slice(i + 1) : '';
+        } catch (_e2) {
+          throw new Error(
+            'Impossible de lire cette image. Essaie un JPEG ou PNG depuis la galerie, ou convertis les HEIC en JPG.'
+          );
+        }
       }
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      const out = canvas.toDataURL('image/jpeg', 0.85);
-      const i = out.indexOf(',');
-      return i >= 0 ? out.slice(i + 1) : '';
     }
 
     function renderPoints() {
@@ -357,7 +412,7 @@
           editor.className = 'editor';
           editor.innerHTML = `
             <textarea placeholder="Une courte note sur ce moment...">${point.note ? String(point.note) : ''}</textarea>
-            <input type="file" accept="image/*">
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/*">
             <button type="submit">Enregistrer</button>
             <div class="status"></div>
           `;
