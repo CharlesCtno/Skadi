@@ -192,14 +192,20 @@ function getAdventurePopupAnchor(lng, lat) {
 function openAdventureLivePointPopup(props, coords) {
     if (!map || !coords || coords.length < 2) return;
     const html = buildAdventurePointPopupHtml(props, adventureLiveState.tripId || '');
-    const popupCls = html.includes('adventure-enriched-body')
+    const isEnrichedLayout = html.includes('adventure-enriched-body');
+    const popupCls = isEnrichedLayout
         ? 'track-popup adventure-enriched-popup'
         : 'track-popup';
+    // Mapbox applies maxWidth as the popup container cap; CSS min-width alone cannot exceed it.
+    const maxWidth = isEnrichedLayout
+        ? 'min(936px, calc(100vw - 24px))'
+        : 'min(420px, calc(100vw - 24px))';
     new mapboxgl.Popup({
         closeButton: true,
         closeOnClick: true,
         className: popupCls,
-        anchor: getAdventurePopupAnchor(coords[0], coords[1])
+        anchor: getAdventurePopupAnchor(coords[0], coords[1]),
+        maxWidth
     })
         .setLngLat(coords)
         .setHTML(html)
