@@ -1,8 +1,10 @@
 <!doctype html>
+<!-- skadi-admin-enrich v3: live/ URLs must not resolve under /admin/ -->
 <html lang="fr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>Skadi - Enrichissement</title>
   <style>
     :root {
@@ -155,14 +157,19 @@
     const SESSION_TOKEN_KEY = 'skadi_admin_token';
     /**
      * Base URL for `live/` on GitHub Pages: must not resolve from `/admin/` as `./live/`.
-     * Uses pathname so it works even if `../live/` resolution differs by browser or URL shape.
+     * Case-insensitive match for `/admin/` (e.g. /Admin/, Enrich.html).
      */
     function getLiveRoot() {
       try {
         const path = window.location.pathname || '';
-        const i = path.indexOf('/admin/');
+        const lower = path.toLowerCase();
+        const i = lower.indexOf('/admin/');
         if (i !== -1) {
           return new URL(path.slice(0, i) + '/live/', window.location.origin).href;
+        }
+        const segs = path.split('/').filter(Boolean);
+        if (segs.length >= 2 && segs[1].toLowerCase() === 'admin') {
+          return new URL('/' + segs[0] + '/live/', window.location.origin).href;
         }
       } catch (_e) {}
       return new URL('../live/', window.location.href).href;
@@ -353,7 +360,7 @@
       empty.textContent = 'Aucun voyage actif pour le moment';
       let active;
       try {
-        active = await fetchJsonOrNull(LIVE_ROOT + 'activeTrip.json');
+        active = await fetchJsonOrNull(new URL('activeTrip.json', LIVE_ROOT).href);
       } catch (err) {
         activeTripId = '';
         points = [];
@@ -376,7 +383,7 @@
       empty.classList.add('hidden');
       let doc;
       try {
-        doc = await fetchJsonOrNull(LIVE_ROOT + 'trips/' + encodeURIComponent(activeTripId) + '/points.json');
+        doc = await fetchJsonOrNull(new URL('trips/' + encodeURIComponent(activeTripId) + '/points.json', LIVE_ROOT).href);
       } catch (err) {
         empty.textContent = 'Erreur de chargement des points: ' + (err && err.message ? err.message : String(err));
         empty.classList.remove('hidden');
