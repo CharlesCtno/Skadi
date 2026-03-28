@@ -52,6 +52,7 @@ let adventureLocalDebugPoints = [];
 let adventureLastError = '';
 let adventureLastRefreshAt = null;
 let adventurePointLayerHandlersBound = false;
+let adventureLatestLayerHandlersBound = false;
 let adventureLiveState = {
     isActive: false,
     tripId: '',
@@ -148,13 +149,26 @@ function buildAdventureLineFeatureCollection(points) {
 
 function buildAdventureLatestPointFeatureCollection(points) {
     const latest = points.length ? points[points.length - 1] : null;
+    if (!latest) {
+        return { type: 'FeatureCollection', features: [] };
+    }
+    const note = String(latest.note || '').trim();
+    const photo = String(latest.photo || '').trim();
+    const enriched = !!(note || photo);
     return {
         type: 'FeatureCollection',
-        features: latest ? [{
+        features: [{
             type: 'Feature',
             geometry: { type: 'Point', coordinates: [latest.lng, latest.lat] },
-            properties: { ts: latest.ts }
-        }] : []
+            properties: {
+                ts: latest.ts,
+                lat: latest.lat,
+                lng: latest.lng,
+                note,
+                photo,
+                enriched: enriched ? 1 : 0
+            }
+        }]
     };
 }
 
@@ -173,6 +187,23 @@ function getAdventurePopupAnchor(lng, lat) {
     const w = map.getContainer().clientWidth || 0;
     if (!w) return 'left';
     return p.x < w / 2 ? 'left' : 'right';
+}
+
+function openAdventureLivePointPopup(props, coords) {
+    if (!map || !coords || coords.length < 2) return;
+    const html = buildAdventurePointPopupHtml(props, adventureLiveState.tripId || '');
+    const popupCls = html.includes('adventure-enriched-body')
+        ? 'track-popup adventure-enriched-popup'
+        : 'track-popup';
+    new mapboxgl.Popup({
+        closeButton: true,
+        closeOnClick: true,
+        className: popupCls,
+        anchor: getAdventurePopupAnchor(coords[0], coords[1])
+    })
+        .setLngLat(coords)
+        .setHTML(html)
+        .addTo(map);
 }
 
 function buildAdventurePointsFeatureCollection(points) {
@@ -1092,7 +1123,7 @@ function renderAdventureLiveLayers(state) {
             layout: { 'line-join': 'round', 'line-cap': 'round' },
             paint: {
                 'line-color': '#7a7a7a',
-                'line-width': 4,
+                'line-width': 5,
                 'line-opacity': 0.95
             }
         });
@@ -1105,7 +1136,7 @@ function renderAdventureLiveLayers(state) {
             layout: { 'line-join': 'round', 'line-cap': 'round' },
             paint: {
                 'line-color': '#ffffff',
-                'line-width': 2.3,
+                'line-width': 3,
                 'line-opacity': 1
             }
         });
@@ -1122,12 +1153,34 @@ function renderAdventureLiveLayers(state) {
             type: 'circle',
             source: ADVENTURE_LATEST_SOURCE_ID,
             paint: {
-                'circle-radius': 7,
-                'circle-color': '#45818e',
-                'circle-stroke-color': '#ffffff',
-                'circle-stroke-width': 2
+                'circle-radius': ['case', ['==', ['get', 'enriched'], 1], 6, 7],
+                'circle-color': ['case', ['==', ['get', 'enriched'], 1], enrichedColor, '#45818e'],
+                'circle-stroke-color': ['case', ['==', ['get', 'enriched'], 1], '#2a2a2a', '#ffffff'],
+                'circle-stroke-width': ['case', ['==', ['get', 'enriched'], 1], 2, 2]
             }
         });
+        if (!adventureLatestLayerHandlersBound) {
+            map.on('click', ADVENTURE_LATEST_LAYER_ID, function(e) {
+                const feature = e && e.features && e.features[0];
+                if (!feature) return;
+                const props = feature.properties || {};
+                const coords = feature.geometry && feature.geometry.coordinates;
+                openAdventureLivePointPopup(props, coords);
+            });
+            map.on('mouseenter', ADVENTURE_LATEST_LAYER_ID, function() {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', ADVENTURE_LATEST_LAYER_ID, function() {
+                map.getCanvas().style.cursor = '';
+            });
+            adventureLatestLayerHandlersBound = true;
+        }
+    } else {
+        map.setPaintProperty(
+            ADVENTURE_LATEST_LAYER_ID,
+            'circle-color',
+            ['case', ['==', ['get', 'enriched'], 1], enrichedColor, '#45818e']
+        );
     }
 
     if (!map.getSource(ADVENTURE_POINTS_SOURCE_ID)) {
@@ -1154,19 +1207,7 @@ function renderAdventureLiveLayers(state) {
                 const props = feature.properties || {};
                 const coords = feature.geometry && feature.geometry.coordinates;
                 if (!coords || coords.length < 2) return;
-                const html = buildAdventurePointPopupHtml(props, adventureLiveState.tripId || '');
-                const popupCls = html.includes('adventure-enriched-body')
-                    ? 'track-popup adventure-enriched-popup'
-                    : 'track-popup';
-                new mapboxgl.Popup({
-                    closeButton: true,
-                    closeOnClick: true,
-                    className: popupCls,
-                    anchor: getAdventurePopupAnchor(coords[0], coords[1])
-                })
-                    .setLngLat(coords)
-                    .setHTML(html)
-                    .addTo(map);
+                openAdventureLivePointPopup(props, coords);
             });
             map.on('mouseenter', ADVENTURE_POINTS_LAYER_ID, function() {
                 map.getCanvas().style.cursor = 'pointer';
@@ -1182,6 +1223,13 @@ function renderAdventureLiveLayers(state) {
             'circle-color',
             ['case', ['==', ['get', 'enriched'], 1], enrichedColor, '#ffffff']
         );
+        if (map.getLayer(ADVENTURE_LATEST_LAYER_ID)) {
+            map.setPaintProperty(
+                ADVENTURE_LATEST_LAYER_ID,
+                'circle-color',
+                ['case', ['==', ['get', 'enriched'], 1], enrichedColor, '#45818e']
+            );
+        }
     }
 }
 
