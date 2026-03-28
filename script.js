@@ -117,13 +117,16 @@ function normalizeAdventurePoint(rawPoint, idx) {
     const tsMs = Date.parse(tsRaw);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
     if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    let photo = rawPoint.photo == null ? '' : String(rawPoint.photo);
+    if (!String(photo).trim() && Array.isArray(rawPoint.photos) && rawPoint.photos.length) {
+        photo = String(rawPoint.photos[0] || '');
+    }
     return {
         lat,
         lng,
         ts: Number.isFinite(tsMs) ? new Date(tsMs).toISOString() : new Date(Date.now() + idx).toISOString(),
         note: rawPoint.note == null ? '' : String(rawPoint.note),
-        photo: rawPoint.photo == null ? '' : String(rawPoint.photo),
-        photos: Array.isArray(rawPoint.photos) ? rawPoint.photos.slice() : []
+        photo: String(photo).trim()
     };
 }
 
@@ -155,46 +158,21 @@ function buildAdventureLatestPointFeatureCollection(points) {
     };
 }
 
-function collectAdventurePhotoPathsFromPoint(p) {
-    const paths = [];
-    const seen = new Set();
-    const single = String(p.photo || '').trim();
-    if (single) {
-        paths.push(single);
-        seen.add(single);
-    }
-    if (Array.isArray(p.photos)) {
-        for (const x of p.photos) {
-            const s = String(x || '').trim();
-            if (s && !seen.has(s)) {
-                paths.push(s);
-                seen.add(s);
-            }
-        }
-    }
-    return paths;
-}
-
-function collectAdventurePhotoPathsFromProps(pointProps) {
-    const raw = pointProps.photosJson;
-    if (raw) {
-        try {
-            const arr = JSON.parse(String(raw));
-            if (Array.isArray(arr) && arr.length) {
-                return arr.map((u) => String(u || '').trim()).filter(Boolean);
-            }
-        } catch (_e) { /* ignore */ }
-    }
-    const photo = String(pointProps.photo || '').trim();
-    return photo ? [photo] : [];
-}
-
 function resolvePhotoUrlForLightbox(relOrUrl) {
     const s = String(relOrUrl || '').trim();
     if (!s) return '';
     if (s.startsWith('http://') || s.startsWith('https://')) return s;
     if (s.startsWith('/')) return window.location.origin + s;
     return new URL(s, window.location.href).href;
+}
+
+/** Horizontal placement: popup sits to the right of the point on the left half of the map, else to the left. */
+function getAdventurePopupAnchor(lng, lat) {
+    if (!map) return 'left';
+    const p = map.project([lng, lat]);
+    const w = map.getContainer().clientWidth || 0;
+    if (!w) return 'left';
+    return p.x < w / 2 ? 'left' : 'right';
 }
 
 function buildAdventurePointsFeatureCollection(points) {
@@ -205,9 +183,8 @@ function buildAdventurePointsFeatureCollection(points) {
             .filter((p) => p.ts !== latestTs)
             .map((p) => {
                 const note = String(p.note || '').trim();
-                const photoPaths = collectAdventurePhotoPathsFromPoint(p);
-                const photo = photoPaths[0] ? photoPaths[0] : '';
-                const enriched = !!(note || photoPaths.length);
+                const photo = String(p.photo || '').trim();
+                const enriched = !!(note || photo);
                 return {
                     type: 'Feature',
                     geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
@@ -217,7 +194,6 @@ function buildAdventurePointsFeatureCollection(points) {
                         lng: p.lng,
                         note,
                         photo,
-                        photosJson: JSON.stringify(photoPaths),
                         enriched: enriched ? 1 : 0
                     }
                 };
@@ -252,12 +228,8 @@ function buildAdventurePointPopupHtml(pointProps, tripId) {
         ? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
         : 'coordonnées inconnues';
     const note = String(pointProps.note || '').trim();
-    let paths = collectAdventurePhotoPathsFromProps(pointProps);
-    if (!paths.length) {
-        const single = String(pointProps.photo || '').trim();
-        if (single) paths = [single];
-    }
-    if (!note && paths.length === 0) {
+    const photo = String(pointProps.photo || '').trim();
+    if (!note && !photo) {
         return `
             <div class="track-popup-body">
               <p><b>Dernier point</b> ${escapeHtml(ts)}</p>
@@ -265,14 +237,17 @@ function buildAdventurePointPopupHtml(pointProps, tripId) {
             </div>
         `;
     }
-    const firstSrc = paths[0];
-    const urlsForPswp = paths.length ? paths.map(resolvePhotoUrlForLightbox).filter(Boolean) : [];
-    const dataUrls = urlsForPswp.map((u) => u.replace(/"/g, '&quot;')).join('|');
-    const countBadge = paths.length > 1 ? `<span class="adventure-photo-count" aria-hidden="true">${paths.length}</span>` : '';
-    const photoBlock = paths.length
+    const absUrl = resolvePhotoUrlForLightbox(photo);
+    const dataUrls = absUrl.replace(/"/g, '&quot;');
+    const onload =
+        "this.classList.toggle('is-portrait',this.naturalHeight>=this.naturalWidth);"
+        + "this.classList.toggle('is-landscape',this.naturalHeight<this.naturalWidth);";
+    const photoBlock = photo
         ? `
           <div class="adventure-enriched-photo-frame adventure-enriched-photo popup-photos-row" data-photo-urls="${dataUrls}">
-            <button type="button" class="adventure-enriched-photo-open popup-photos-btn" aria-label="Voir les photos">${countBadge}<img src="${escapeHtml(firstSrc)}" alt="" loading="lazy" class="adventure-enriched-thumb"></button>
+            <button type="button" class="adventure-enriched-photo-open popup-photos-btn" aria-label="Voir la photo">
+              <img src="${escapeHtml(photo)}" alt="" loading="lazy" class="adventure-enriched-thumb" onload="${onload}">
+            </button>
           </div>`
         : '';
     return `
@@ -1183,7 +1158,12 @@ function renderAdventureLiveLayers(state) {
                 const popupCls = html.includes('adventure-enriched-body')
                     ? 'track-popup adventure-enriched-popup'
                     : 'track-popup';
-                new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: popupCls })
+                new mapboxgl.Popup({
+                    closeButton: true,
+                    closeOnClick: true,
+                    className: popupCls,
+                    anchor: getAdventurePopupAnchor(coords[0], coords[1])
+                })
                     .setLngLat(coords)
                     .setHTML(html)
                     .addTo(map);

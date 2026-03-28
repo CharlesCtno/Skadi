@@ -52,23 +52,19 @@ Each point:
 - `ts` (`string`, required): ISO timestamp.
 - `accuracy` (`number`, optional): GPS accuracy in meters.
 
-## Forward-compatible enrichment (next phase)
+## Enrichment
 
-For phase 2 enrichment, `pointId` is the point `ts` value (string equality).
+For enrichment, `pointId` is the point `ts` value (string equality).
 
 Optional enrichment fields on a point:
 - `note` (`string`): short text attached to the point.
-- `photo` (`string`): repo-relative path to the **first** photo (same as `photos[0]` when multiple).
-- `photos` (`string[]`, optional): ordered list of repo-relative paths for all photos at this point.
+- `photo` (`string`): repo-relative path to the JPEG, e.g. `live/trips/<tripId>/photos/<pointId>.jpg`.
 
-**File naming** (point id = point `ts` string):
+**File path:** `live/trips/<tripId>/photos/<pointId>.jpg` (one image per point; new upload overwrites the file).
 
-- First image: `live/trips/<tripId>/photos/<pointId>.jpg`
-- Additional images: `live/trips/<tripId>/photos/<pointId>_2.jpg`, `<pointId>_3.jpg`, …
-
-The map shows the first image in the popup; the full list is used for the lightbox.
+Legacy `photos` arrays in old JSON may exist; clients may read only `photo` or the first entry of `photos`.
 
 ### Enrich workflow (`enrich_point`)
 
 - Notes and `points.json` updates are applied by `scripts/adventure_live_dispatch.py` via `workflow_dispatch`.
-- **Photos:** do not pass large base64 blobs as workflow inputs (size limits). The admin page uploads each JPEG with the **GitHub Contents API** to the next path above, then dispatches `enrich_point` with `photo_uploaded: true`, empty `photo`, and **`photo_path`** set to that repo-relative path so `points.json` gains the new entry in `photos` (and `photo` stays the first).
+- **Photos:** do not pass large base64 blobs as workflow inputs (size limits). The admin page uploads the JPEG with the **GitHub Contents API** to `live/trips/<tripId>/photos/<pointId>.jpg`, then dispatches `enrich_point` with `photo_uploaded: true` and an empty `photo` input so the workflow only updates `points.json` with the `photo` path.

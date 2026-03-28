@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- skadi-admin-enrich v6: mobile image decode (createImageBitmap / object URL before FileReader) -->
+<!-- skadi-admin-enrich v7: single photo per point (Contents API + workflow) -->
 <html lang="fr">
 <head>
   <meta charset="utf-8">
@@ -181,41 +181,8 @@
     let expandedPointId = '';
     let sessionToken = '';
 
-    function collectPhotoPaths(p) {
-      const out = [];
-      const seen = new Set();
-      const single = String(p.photo || '').trim();
-      if (single) {
-        out.push(single);
-        seen.add(single);
-      }
-      if (Array.isArray(p.photos)) {
-        for (const x of p.photos) {
-          const s = String(x || '').trim();
-          if (s && !seen.has(s)) {
-            out.push(s);
-            seen.add(s);
-          }
-        }
-      }
-      return out;
-    }
-
-    function mergePhotoLocal(p, rel) {
-      const paths = collectPhotoPaths(p);
-      if (!paths.includes(rel)) paths.push(rel);
-      return { ...p, photo: paths[0] || '', photos: paths };
-    }
-
-    function nextPhotoRelPath(tripId, pointId, point) {
-      const paths = collectPhotoPaths(point);
-      const n = paths.length;
-      if (n === 0) return `live/trips/${tripId}/photos/${pointId}.jpg`;
-      return `live/trips/${tripId}/photos/${pointId}_${n + 1}.jpg`;
-    }
-
     function hasEnrichment(p) {
-      return !!(String(p.note || '').trim() || collectPhotoPaths(p).length);
+      return !!(String(p.note || '').trim() || String(p.photo || '').trim());
     }
 
     function parseIso(iso) {
@@ -297,7 +264,7 @@
       }
     }
 
-    function buildDispatchPayload(pointId, note, photoB64, photoUploaded, photoPath) {
+    function buildDispatchPayload(pointId, note, photoB64, photoUploaded) {
       return {
         ref: 'main',
         inputs: {
@@ -306,13 +273,12 @@
           point_id: pointId,
           note: note || '',
           photo: photoB64 || '',
-          photo_uploaded: photoUploaded ? 'true' : 'false',
-          photo_path: photoPath || ''
+          photo_uploaded: photoUploaded ? 'true' : 'false'
         }
       };
     }
 
-    async function dispatchEnrichPoint(pointId, note, photoB64, photoUploaded, photoPath) {
+    async function dispatchEnrichPoint(pointId, note, photoB64, photoUploaded) {
       if (!sessionToken.trim()) throw new Error('Token GitHub manquant');
       const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/actions/workflows/${GH_WORKFLOW}/dispatches`;
       const res = await fetch(url, {
@@ -323,7 +289,7 @@
           'X-GitHub-Api-Version': '2022-11-28',
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(buildDispatchPayload(pointId, note, photoB64, !!photoUploaded, photoPath || ''))
+        body: JSON.stringify(buildDispatchPayload(pointId, note, photoB64, !!photoUploaded))
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => '');
@@ -456,7 +422,7 @@
           editor.className = 'editor';
           editor.innerHTML = `
             <textarea placeholder="Une courte note sur ce moment...">${point.note ? String(point.note) : ''}</textarea>
-            <input type="file" accept="image/jpeg,image/png,image/webp,image/*" multiple>
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/*">
             <button type="submit">Enregistrer</button>
             <div class="status"></div>
           `;
@@ -471,21 +437,20 @@
             submitBtn.disabled = true;
             try {
               const note = textarea.value.trim();
-              const fileArr = Array.from(fileInput.files || []);
-              let working = point;
-              if (fileArr.length) {
-                for (const file of fileArr) {
-                  const relPath = nextPhotoRelPath(activeTripId, pointId, working);
-                  const photoB64 = await resizeImageBase64(file);
-                  await putRepoJpeg(relPath, photoB64, sessionToken);
-                  await dispatchEnrichPoint(pointId, note, '', true, relPath);
-                  working = mergePhotoLocal(working, relPath);
-                }
-                Object.assign(point, working);
-              } else {
-                await dispatchEnrichPoint(pointId, note, '', false, '');
+              const selected = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+              let photoB64 = selected ? await resizeImageBase64(selected) : '';
+              let photoUploaded = false;
+              if (photoB64) {
+                const relPath = `live/trips/${activeTripId}/photos/${pointId}.jpg`;
+                await putRepoJpeg(relPath, photoB64, sessionToken);
+                photoB64 = '';
+                photoUploaded = true;
               }
+              await dispatchEnrichPoint(pointId, note, photoB64, photoUploaded);
               point.note = note;
+              if (photoUploaded) {
+                point.photo = `live/trips/${activeTripId}/photos/${pointId}.jpg`;
+              }
               status.className = 'status ok';
               status.textContent = 'Enregistré ✓';
               renderPoints();
