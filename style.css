@@ -296,7 +296,6 @@
   --skadi-3d-gap: 8px;
   /* Horizontal position of the legend “i” FAB (right-hand of the pair) */
   --skadi-legend-toggle-left: calc(var(--skadi-legend-fab-left) + var(--skadi-legend-fab-size) + var(--skadi-3d-gap));
-  /* Same as tab underline (index.html #tabs li a.active) */
   --skadi-accent: #45818e;
   --skadi-fab-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
   --skadi-fab-ring-selected: 0 0 0 2px var(--skadi-accent), var(--skadi-fab-shadow);
@@ -362,7 +361,6 @@
   z-index: 1003;
   max-width: none;
   border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 0;
   padding: 10px 12px;
   background: rgba(61, 49, 49, 0.97);
