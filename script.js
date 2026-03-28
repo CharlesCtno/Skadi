@@ -270,14 +270,11 @@ function buildAdventurePointPopupHtml(pointProps, tripId) {
     }
     const absUrl = resolvePhotoUrlForLightbox(photo);
     const dataUrls = absUrl.replace(/"/g, '&quot;');
-    const onload =
-        "this.classList.toggle('is-portrait',this.naturalHeight>=this.naturalWidth);"
-        + "this.classList.toggle('is-landscape',this.naturalHeight<this.naturalWidth);";
     const photoBlock = photo
         ? `
           <div class="adventure-enriched-photo-frame adventure-enriched-photo popup-photos-row" data-photo-urls="${dataUrls}">
             <button type="button" class="adventure-enriched-photo-open popup-photos-btn" aria-label="Voir la photo">
-              <img src="${escapeHtml(photo)}" alt="" loading="lazy" class="adventure-enriched-thumb" onload="${onload}">
+              <img src="${escapeHtml(photo)}" alt="" loading="lazy" class="adventure-enriched-thumb">
             </button>
           </div>`
         : '';

@@ -226,26 +226,15 @@
   position: relative;
 }
 
+/* Height-first: both portrait and landscape scale up to fill the frame height (landscape was width-first before, which kept the bitmap small). */
 .mapboxgl-popup.adventure-enriched-popup .adventure-enriched-thumb {
   display: block;
-  max-width: 100%;
-  max-height: 100%;
-  width: auto;
-  height: auto;
-  object-fit: contain;
-  border-radius: 6px;
-}
-
-.mapboxgl-popup.adventure-enriched-popup .adventure-enriched-thumb.is-portrait {
   height: 100%;
   width: auto;
   max-width: 100%;
-}
-
-.mapboxgl-popup.adventure-enriched-popup .adventure-enriched-thumb.is-landscape {
-  width: 100%;
-  height: auto;
   max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
 }
 
 @media (min-width: 768px) {
@@ -259,11 +248,13 @@
   }
 
   .mapboxgl-popup.adventure-enriched-popup .adventure-enriched-meta {
-    flex: 1 1 50%;
+    flex: 1 1 42%;
+    min-width: 0;
   }
 
   .mapboxgl-popup.adventure-enriched-popup .adventure-enriched-photo-frame {
-    flex: 0 1 50%;
+    flex: 0 1 58%;
+    min-width: 0;
     height: 364px;
   }
 }
