@@ -239,7 +239,7 @@
 
 @media (min-width: 768px) {
   .mapboxgl-popup.adventure-enriched-popup .mapboxgl-popup-content-wrapper {
-    min-width: min(520px, calc(100vw - 24px));
+    min-width: min(624px, calc(100vw - 24px));
   }
 
   .mapboxgl-popup.adventure-enriched-popup .adventure-enriched-body {
