@@ -181,6 +181,60 @@
   color: #fff;
 }
 
+/* Adventure enriched point popup: text + photo side by side on wide viewports */
+.mapboxgl-popup.adventure-enriched-popup .adventure-enriched-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.mapboxgl-popup.adventure-enriched-popup .adventure-enriched-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mapboxgl-popup.adventure-enriched-popup .adventure-enriched-note {
+  font-style: italic;
+  margin-top: 0.5em;
+}
+
+.mapboxgl-popup.adventure-enriched-popup .adventure-enriched-photo {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.mapboxgl-popup.adventure-enriched-popup .adventure-enriched-photo img {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+@media (min-width: 768px) {
+  .mapboxgl-popup.adventure-enriched-popup .mapboxgl-popup-content-wrapper {
+    min-width: min(520px, calc(100vw - 24px));
+  }
+
+  .mapboxgl-popup.adventure-enriched-popup .adventure-enriched-body {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .mapboxgl-popup.adventure-enriched-popup .adventure-enriched-meta {
+    flex: 1 1 50%;
+  }
+
+  .mapboxgl-popup.adventure-enriched-popup .adventure-enriched-photo {
+    flex: 0 1 50%;
+  }
+
+  .mapboxgl-popup.adventure-enriched-popup .adventure-enriched-photo img {
+    max-height: 280px;
+  }
+}
+
 .mapboxgl-popup .popup-activity-link {
   background: #45818e;
 }

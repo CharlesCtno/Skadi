@@ -220,11 +220,13 @@ function buildAdventurePointPopupHtml(pointProps, tripId) {
     const defaultPhotoPath = `live/trips/${tripId}/photos/${String(pointProps.ts || '').trim()}.jpg`;
     const photoPath = photo || defaultPhotoPath;
     return `
-        <div class="track-popup-body">
-          <p><b>Point enrichi</b> ${escapeHtml(ts)}</p>
-          <p><b>Coordonnées</b> ${escapeHtml(coords)}</p>
-          ${note ? `<p style="font-style: italic;">${escapeHtml(note)}</p>` : ''}
-          ${photoPath ? `<img src="${escapeHtml(photoPath)}" alt="Photo du point" style="display:block;width:100%;margin-top:8px;border-radius:6px;">` : ''}
+        <div class="track-popup-body adventure-enriched-body">
+          <div class="adventure-enriched-meta">
+            <p><b>Point enrichi</b> ${escapeHtml(ts)}</p>
+            <p><b>Coordonnées</b> ${escapeHtml(coords)}</p>
+            ${note ? `<p class="adventure-enriched-note">${escapeHtml(note)}</p>` : ''}
+          </div>
+          ${photoPath ? `<div class="adventure-enriched-photo"><img src="${escapeHtml(photoPath)}" alt="Photo du point" loading="lazy"></div>` : ''}
         </div>
     `;
 }
@@ -1122,7 +1124,10 @@ function renderAdventureLiveLayers(state) {
                 const coords = feature.geometry && feature.geometry.coordinates;
                 if (!coords || coords.length < 2) return;
                 const html = buildAdventurePointPopupHtml(props, adventureLiveState.tripId || '');
-                new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: 'track-popup' })
+                const popupCls = html.includes('adventure-enriched-body')
+                    ? 'track-popup adventure-enriched-popup'
+                    : 'track-popup';
+                new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: popupCls })
                     .setLngLat(coords)
                     .setHTML(html)
                     .addTo(map);
