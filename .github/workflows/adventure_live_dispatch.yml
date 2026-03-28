@@ -64,6 +64,11 @@ on:
         options:
           - "false"
           - "true"
+      photo_path:
+        description: "Repo-relative JPEG path (enrich_point, Contents API upload; e.g. live/trips/.../ts_2.jpg)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: write
@@ -100,7 +105,8 @@ jobs:
             --point-id "${{ inputs.point_id }}" \
             --note "${{ inputs.note }}" \
             --photo "${{ inputs.photo }}" \
-            --photo-uploaded "${{ inputs.photo_uploaded }}"
+            --photo-uploaded "${{ inputs.photo_uploaded }}" \
+            --photo-path "${{ inputs.photo_path }}"
 
       - name: Commit and push live state
         run: |

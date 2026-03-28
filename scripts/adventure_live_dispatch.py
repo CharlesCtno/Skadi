@@ -71,6 +71,57 @@ def get_photo_path(trip_id: str, point_id: str) -> Path:
     return TRIPS_DIR / trip_id / "photos" / f"{point_id}.jpg"
 
 
+def collect_existing_photo_paths(target: Dict[str, Any]) -> List[str]:
+    paths: List[str] = []
+    seen = set()
+    p = str(target.get("photo") or "").strip()
+    if p:
+        paths.append(p)
+        seen.add(p)
+    for x in target.get("photos") or []:
+        xs = str(x).strip()
+        if xs and xs not in seen:
+            paths.append(xs)
+            seen.add(xs)
+    return paths
+
+
+def next_photo_rel_path(trip_id: str, point_id: str, target: Dict[str, Any]) -> str:
+    paths = collect_existing_photo_paths(target)
+    n = len(paths)
+    if n == 0:
+        return f"live/trips/{trip_id}/photos/{point_id}.jpg"
+    return f"live/trips/{trip_id}/photos/{point_id}_{n + 1}.jpg"
+
+
+def validate_photo_rel(trip_id: str, point_id: str, rel: str) -> str:
+    rel = (rel or "").strip().replace("\\", "/")
+    prefix = f"live/trips/{trip_id}/photos/"
+    if not rel.startswith(prefix):
+        raise ValueError("invalid photo path prefix")
+    name = Path(rel).name
+    if not name.endswith(".jpg"):
+        raise ValueError("photo must be .jpg")
+    base = name[:-4]
+    if base == point_id:
+        return rel
+    if base.startswith(point_id + "_"):
+        tail = base[len(point_id) + 1 :]
+        if tail.isdigit() and int(tail) >= 2:
+            return rel
+    raise ValueError("photo filename does not match point_id")
+
+
+def merge_photos_into_target(target: Dict[str, Any], new_rel: str) -> bool:
+    paths = collect_existing_photo_paths(target)
+    if new_rel in paths:
+        return False
+    paths.append(new_rel)
+    target["photo"] = paths[0]
+    target["photos"] = paths
+    return True
+
+
 def sorted_points(points: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     def keyfn(p: Dict[str, Any]) -> str:
         return str(p.get("ts") or "")
@@ -151,7 +202,12 @@ def decode_photo_base64(photo_raw: str) -> bytes:
 
 
 def handle_enrich_point(
-    trip_id: str, point_id: str, note: str, photo_raw: str, photo_uploaded: bool = False
+    trip_id: str,
+    point_id: str,
+    note: str,
+    photo_raw: str,
+    photo_uploaded: bool = False,
+    photo_path_arg: str = "",
 ) -> None:
     point_id = (point_id or "").strip()
     if not point_id:
@@ -179,24 +235,26 @@ def handle_enrich_point(
             changed = True
 
     photo_bytes = decode_photo_base64(photo_raw)
-    photo_rel = f"live/trips/{trip_id}/photos/{point_id}.jpg"
     if photo_bytes:
-        photo_path = get_photo_path(trip_id, point_id)
+        photo_rel = next_photo_rel_path(trip_id, point_id, target)
+        validate_photo_rel(trip_id, point_id, photo_rel)
+        photo_fs = Path(photo_rel)
         existing = b""
-        if photo_path.exists():
-            existing = photo_path.read_bytes()
+        if photo_fs.exists():
+            existing = photo_fs.read_bytes()
         if existing != photo_bytes:
-            photo_path.parent.mkdir(parents=True, exist_ok=True)
-            photo_path.write_bytes(photo_bytes)
-        if str(target.get("photo") or "") != photo_rel:
-            target["photo"] = photo_rel
+            photo_fs.parent.mkdir(parents=True, exist_ok=True)
+            photo_fs.write_bytes(photo_bytes)
+        if merge_photos_into_target(target, photo_rel):
             changed = True
     elif photo_uploaded:
-        photo_path = get_photo_path(trip_id, point_id)
-        if not photo_path.exists():
+        raw_arg = (photo_path_arg or "").strip()
+        photo_rel = raw_arg or f"live/trips/{trip_id}/photos/{point_id}.jpg"
+        validate_photo_rel(trip_id, point_id, photo_rel)
+        photo_fs = Path(photo_rel)
+        if not photo_fs.exists():
             raise ValueError("photo_uploaded set but JPEG not found in repo; upload via Contents API first")
-        if str(target.get("photo") or "") != photo_rel:
-            target["photo"] = photo_rel
+        if merge_photos_into_target(target, photo_rel):
             changed = True
 
     if changed:
@@ -235,6 +293,7 @@ def main() -> int:
     parser.add_argument("--note", default="")
     parser.add_argument("--photo", default="")
     parser.add_argument("--photo-uploaded", default="false")
+    parser.add_argument("--photo-path", default="", help="Repo-relative JPEG path when using Contents API upload")
     args = parser.parse_args()
 
     try:
@@ -251,7 +310,14 @@ def main() -> int:
             handle_add_point(trip_id, point)
         elif action == "enrich_point":
             photo_uploaded = (args.photo_uploaded or "").strip().lower() in ("true", "1", "yes")
-            handle_enrich_point(trip_id, args.point_id, args.note, args.photo, photo_uploaded=photo_uploaded)
+            handle_enrich_point(
+                trip_id,
+                args.point_id,
+                args.note,
+                args.photo,
+                photo_uploaded=photo_uploaded,
+                photo_path_arg=args.photo_path or "",
+            )
         elif action == "stop_trip":
             handle_stop_trip(trip_id)
         else:

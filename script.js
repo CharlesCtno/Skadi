@@ -155,6 +155,48 @@ function buildAdventureLatestPointFeatureCollection(points) {
     };
 }
 
+function collectAdventurePhotoPathsFromPoint(p) {
+    const paths = [];
+    const seen = new Set();
+    const single = String(p.photo || '').trim();
+    if (single) {
+        paths.push(single);
+        seen.add(single);
+    }
+    if (Array.isArray(p.photos)) {
+        for (const x of p.photos) {
+            const s = String(x || '').trim();
+            if (s && !seen.has(s)) {
+                paths.push(s);
+                seen.add(s);
+            }
+        }
+    }
+    return paths;
+}
+
+function collectAdventurePhotoPathsFromProps(pointProps) {
+    const raw = pointProps.photosJson;
+    if (raw) {
+        try {
+            const arr = JSON.parse(String(raw));
+            if (Array.isArray(arr) && arr.length) {
+                return arr.map((u) => String(u || '').trim()).filter(Boolean);
+            }
+        } catch (_e) { /* ignore */ }
+    }
+    const photo = String(pointProps.photo || '').trim();
+    return photo ? [photo] : [];
+}
+
+function resolvePhotoUrlForLightbox(relOrUrl) {
+    const s = String(relOrUrl || '').trim();
+    if (!s) return '';
+    if (s.startsWith('http://') || s.startsWith('https://')) return s;
+    if (s.startsWith('/')) return window.location.origin + s;
+    return new URL(s, window.location.href).href;
+}
+
 function buildAdventurePointsFeatureCollection(points) {
     const latestTs = points.length ? points[points.length - 1].ts : '';
     return {
@@ -163,8 +205,9 @@ function buildAdventurePointsFeatureCollection(points) {
             .filter((p) => p.ts !== latestTs)
             .map((p) => {
                 const note = String(p.note || '').trim();
-                const photo = String(p.photo || '').trim();
-                const enriched = !!(note || photo);
+                const photoPaths = collectAdventurePhotoPathsFromPoint(p);
+                const photo = photoPaths[0] ? photoPaths[0] : '';
+                const enriched = !!(note || photoPaths.length);
                 return {
                     type: 'Feature',
                     geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
@@ -174,6 +217,7 @@ function buildAdventurePointsFeatureCollection(points) {
                         lng: p.lng,
                         note,
                         photo,
+                        photosJson: JSON.stringify(photoPaths),
                         enriched: enriched ? 1 : 0
                     }
                 };
@@ -208,8 +252,12 @@ function buildAdventurePointPopupHtml(pointProps, tripId) {
         ? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
         : 'coordonnées inconnues';
     const note = String(pointProps.note || '').trim();
-    const photo = String(pointProps.photo || '').trim();
-    if (!note && !photo) {
+    let paths = collectAdventurePhotoPathsFromProps(pointProps);
+    if (!paths.length) {
+        const single = String(pointProps.photo || '').trim();
+        if (single) paths = [single];
+    }
+    if (!note && paths.length === 0) {
         return `
             <div class="track-popup-body">
               <p><b>Dernier point</b> ${escapeHtml(ts)}</p>
@@ -217,8 +265,16 @@ function buildAdventurePointPopupHtml(pointProps, tripId) {
             </div>
         `;
     }
-    const defaultPhotoPath = `live/trips/${tripId}/photos/${String(pointProps.ts || '').trim()}.jpg`;
-    const photoPath = photo || defaultPhotoPath;
+    const firstSrc = paths[0];
+    const urlsForPswp = paths.length ? paths.map(resolvePhotoUrlForLightbox).filter(Boolean) : [];
+    const dataUrls = urlsForPswp.map((u) => u.replace(/"/g, '&quot;')).join('|');
+    const countBadge = paths.length > 1 ? `<span class="adventure-photo-count" aria-hidden="true">${paths.length}</span>` : '';
+    const photoBlock = paths.length
+        ? `
+          <div class="adventure-enriched-photo-frame adventure-enriched-photo popup-photos-row" data-photo-urls="${dataUrls}">
+            <button type="button" class="adventure-enriched-photo-open popup-photos-btn" aria-label="Voir les photos">${countBadge}<img src="${escapeHtml(firstSrc)}" alt="" loading="lazy" class="adventure-enriched-thumb"></button>
+          </div>`
+        : '';
     return `
         <div class="track-popup-body adventure-enriched-body">
           <div class="adventure-enriched-meta">
@@ -226,7 +282,7 @@ function buildAdventurePointPopupHtml(pointProps, tripId) {
             <p><b>Coordonnées</b> ${escapeHtml(coords)}</p>
             ${note ? `<p class="adventure-enriched-note">${escapeHtml(note)}</p>` : ''}
           </div>
-          ${photoPath ? `<div class="adventure-enriched-photo"><img src="${escapeHtml(photoPath)}" alt="Photo du point" loading="lazy"></div>` : ''}
+          ${photoBlock}
         </div>
     `;
 }
@@ -3838,13 +3894,16 @@ function initPhotoSwipeLightbox() {
 
 // Use capture phase so we receive the click before the map popup stops propagation
 document.body.addEventListener('click', function(e) {
-    const btn = e.target.closest('.popup-photos-btn');
-    if (!btn) return;
-    const row = btn.closest('[data-photo-urls]');
+    const row = e.target.closest('[data-photo-urls]');
     if (!row) return;
+    const isAdventure = row.classList.contains('adventure-enriched-photo');
+    if (!isAdventure) {
+        const btn = e.target.closest('.popup-photos-btn');
+        if (!btn) return;
+    }
     const urlsAttr = row.getAttribute('data-photo-urls');
     if (!urlsAttr) return;
-    const urls = urlsAttr.split('|').map(s => (s || '').trim()).filter(s => s && (s.startsWith('http://') || s.startsWith('https://')));
+    const urls = urlsAttr.split('|').map((s) => (s || '').trim()).filter(Boolean).map(resolvePhotoUrlForLightbox).filter(Boolean);
     if (urls.length === 0) return;
     e.preventDefault();
     e.stopPropagation();
