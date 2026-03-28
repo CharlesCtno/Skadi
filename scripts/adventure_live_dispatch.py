@@ -150,7 +150,9 @@ def decode_photo_base64(photo_raw: str) -> bytes:
         raise ValueError(f"invalid base64 photo payload: {exc}") from exc
 
 
-def handle_enrich_point(trip_id: str, point_id: str, note: str, photo_raw: str) -> None:
+def handle_enrich_point(
+    trip_id: str, point_id: str, note: str, photo_raw: str, photo_uploaded: bool = False
+) -> None:
     point_id = (point_id or "").strip()
     if not point_id:
         raise ValueError("point_id is required for enrich_point")
@@ -177,15 +179,22 @@ def handle_enrich_point(trip_id: str, point_id: str, note: str, photo_raw: str) 
             changed = True
 
     photo_bytes = decode_photo_base64(photo_raw)
+    photo_rel = f"live/trips/{trip_id}/photos/{point_id}.jpg"
     if photo_bytes:
         photo_path = get_photo_path(trip_id, point_id)
-        photo_rel = f"live/trips/{trip_id}/photos/{point_id}.jpg"
         existing = b""
         if photo_path.exists():
             existing = photo_path.read_bytes()
         if existing != photo_bytes:
             photo_path.parent.mkdir(parents=True, exist_ok=True)
             photo_path.write_bytes(photo_bytes)
+        if str(target.get("photo") or "") != photo_rel:
+            target["photo"] = photo_rel
+            changed = True
+    elif photo_uploaded:
+        photo_path = get_photo_path(trip_id, point_id)
+        if not photo_path.exists():
+            raise ValueError("photo_uploaded set but JPEG not found in repo; upload via Contents API first")
         if str(target.get("photo") or "") != photo_rel:
             target["photo"] = photo_rel
             changed = True
@@ -225,6 +234,7 @@ def main() -> int:
     parser.add_argument("--point-id", default="")
     parser.add_argument("--note", default="")
     parser.add_argument("--photo", default="")
+    parser.add_argument("--photo-uploaded", default="false")
     args = parser.parse_args()
 
     try:
@@ -240,7 +250,8 @@ def main() -> int:
             point = parse_point(args.lat, args.lng, args.lon, args.ts, args.accuracy)
             handle_add_point(trip_id, point)
         elif action == "enrich_point":
-            handle_enrich_point(trip_id, args.point_id, args.note, args.photo)
+            photo_uploaded = (args.photo_uploaded or "").strip().lower() in ("true", "1", "yes")
+            handle_enrich_point(trip_id, args.point_id, args.note, args.photo, photo_uploaded=photo_uploaded)
         elif action == "stop_trip":
             handle_stop_trip(trip_id)
         else:

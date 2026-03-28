@@ -100,7 +100,7 @@ Adventure mode now has an MVP "live trip" path for bikepacking:
 
 ### Security notes
 
-- Use a fine-grained PAT scoped only to this repository and Actions write.
+- Use a fine-grained PAT scoped only to this repository: **Actions (write)** for phone shortcuts, plus **Contents (read/write)** if you use `admin/enrich.html` to upload photos (GitHub Contents API).
 - Prefer short-lived tokens and rotate regularly.
 - If a token is exposed, revoke it immediately and create a new one (already done in current setup).
 

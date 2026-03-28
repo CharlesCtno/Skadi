@@ -56,6 +56,14 @@ on:
         required: false
         default: ""
         type: string
+      photo_uploaded:
+        description: "Set true if photo was uploaded via Contents API (enrich_point)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 permissions:
   contents: write
@@ -91,7 +99,8 @@ jobs:
             --ts "${{ inputs.ts }}" \
             --point-id "${{ inputs.point_id }}" \
             --note "${{ inputs.note }}" \
-            --photo "${{ inputs.photo }}"
+            --photo "${{ inputs.photo }}" \
+            --photo-uploaded "${{ inputs.photo_uploaded }}"
 
       - name: Commit and push live state
         run: |

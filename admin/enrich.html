@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- skadi-admin-enrich v3: live/ URLs must not resolve under /admin/ -->
+<!-- skadi-admin-enrich v4: photo via Contents API + enrich_point photo_uploaded -->
 <html lang="fr">
 <head>
   <meta charset="utf-8">
@@ -215,7 +215,46 @@
         .sort((a, b) => Date.parse(String(b.ts || '')) - Date.parse(String(a.ts || '')));
     }
 
-    function buildDispatchPayload(pointId, note, photoB64) {
+    function githubContentsSegments(relPath) {
+      return relPath.split('/').map((s) => encodeURIComponent(s)).join('/');
+    }
+
+    /**
+     * Upload JPEG via Contents API (avoids huge workflow_dispatch inputs for base64 photos).
+     * Requires PAT with Contents: Read and write (fine-grained).
+     */
+    async function putRepoJpeg(relPath, base64Jpeg, token) {
+      const apiPath = githubContentsSegments(relPath);
+      const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${apiPath}`;
+      const hdr = {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json'
+      };
+      let sha;
+      const getRes = await fetch(url, { headers: hdr, cache: 'no-store' });
+      if (getRes.status === 200) {
+        const meta = await getRes.json();
+        sha = meta.sha;
+      } else if (getRes.status !== 404) {
+        const t = await getRes.text().catch(() => '');
+        throw new Error(`Lecture fichier GitHub (${getRes.status}): ${t}`);
+      }
+      const body = {
+        message: `[adventure] enrich photo ${relPath}`,
+        content: base64Jpeg,
+        branch: 'main'
+      };
+      if (sha) body.sha = sha;
+      const putRes = await fetch(url, { method: 'PUT', headers: hdr, body: JSON.stringify(body) });
+      if (!putRes.ok) {
+        const t = await putRes.text().catch(() => '');
+        throw new Error(`Envoi photo (${putRes.status}): ${t}`);
+      }
+    }
+
+    function buildDispatchPayload(pointId, note, photoB64, photoUploaded) {
       return {
         ref: 'main',
         inputs: {
@@ -223,12 +262,13 @@
           trip_id: activeTripId,
           point_id: pointId,
           note: note || '',
-          photo: photoB64 || ''
+          photo: photoB64 || '',
+          photo_uploaded: photoUploaded ? 'true' : 'false'
         }
       };
     }
 
-    async function dispatchEnrichPoint(pointId, note, photoB64) {
+    async function dispatchEnrichPoint(pointId, note, photoB64, photoUploaded) {
       if (!sessionToken.trim()) throw new Error('Token GitHub manquant');
       const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/actions/workflows/${GH_WORKFLOW}/dispatches`;
       const res = await fetch(url, {
@@ -239,11 +279,11 @@
           'X-GitHub-Api-Version': '2022-11-28',
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(buildDispatchPayload(pointId, note, photoB64))
+        body: JSON.stringify(buildDispatchPayload(pointId, note, photoB64, !!photoUploaded))
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => '');
-        throw new Error(`Dispatch failed (${res.status}) ${txt}`);
+        throw new Error(`Workflow (${res.status}) ${txt}`);
       }
     }
 
@@ -332,18 +372,26 @@
             submitBtn.disabled = true;
             try {
               const selected = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
-              const photoB64 = selected ? await resizeImageBase64(selected) : '';
-              await dispatchEnrichPoint(pointId, textarea.value, photoB64);
-              point.note = textarea.value.trim() || point.note || '';
+              let photoB64 = selected ? await resizeImageBase64(selected) : '';
+              let photoUploaded = false;
               if (photoB64) {
+                const relPath = `live/trips/${activeTripId}/photos/${pointId}.jpg`;
+                await putRepoJpeg(relPath, photoB64, sessionToken);
+                photoB64 = '';
+                photoUploaded = true;
+              }
+              await dispatchEnrichPoint(pointId, textarea.value, photoB64, photoUploaded);
+              point.note = textarea.value.trim() || point.note || '';
+              if (photoUploaded) {
                 point.photo = `live/trips/${activeTripId}/photos/${pointId}.jpg`;
               }
               status.className = 'status ok';
               status.textContent = 'Enregistré ✓';
               renderPoints();
-            } catch (_err) {
+            } catch (err) {
               status.className = 'status err';
-              status.textContent = 'Erreur, réessaie';
+              const msg = err && err.message ? err.message : String(err);
+              status.textContent = msg.length > 220 ? msg.slice(0, 220) + '…' : msg;
             } finally {
               submitBtn.disabled = false;
             }

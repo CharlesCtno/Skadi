@@ -62,3 +62,8 @@ Optional enrichment fields on a point:
 - `photos` (`string[]`, optional legacy/future format): optional list of photo URLs.
 
 Current rendering uses `lat/lng/ts` for geometry and displays `note/photo` when available.
+
+### Enrich workflow (`enrich_point`)
+
+- Notes and `points.json` updates are applied by `scripts/adventure_live_dispatch.py` via `workflow_dispatch`.
+- **Photos:** do not pass large base64 blobs as workflow inputs (size limits). The admin page uploads the JPEG with the **GitHub Contents API** to `live/trips/<tripId>/photos/<pointId>.jpg`, then dispatches `enrich_point` with `photo_uploaded: true` and an empty `photo` input so the workflow only updates `points.json` with the `photo` path.
