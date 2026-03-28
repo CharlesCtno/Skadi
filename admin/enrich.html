@@ -239,6 +239,11 @@
         sha = meta.sha;
       } else if (getRes.status !== 404) {
         const t = await getRes.text().catch(() => '');
+        if (getRes.status === 403) {
+          throw new Error(
+            '403 : le PAT n’a pas accès au dépôt. GitHub → Settings → Developer settings → ton token → Repository permissions → Contents : Read and write (dépôt Skadi). Puis rouvre la page et colle le token à jour.'
+          );
+        }
         throw new Error(`Lecture fichier GitHub (${getRes.status}): ${t}`);
       }
       const body = {
@@ -250,6 +255,11 @@
       const putRes = await fetch(url, { method: 'PUT', headers: hdr, body: JSON.stringify(body) });
       if (!putRes.ok) {
         const t = await putRes.text().catch(() => '');
+        if (putRes.status === 403) {
+          throw new Error(
+            '403 : le PAT n’a pas la permission Contents. GitHub → ton fine-grained token → Repository permissions → Contents : Read and write sur Skadi. Enregistre, rouvre enrich.html et saisis le nouveau token.'
+          );
+        }
         throw new Error(`Envoi photo (${putRes.status}): ${t}`);
       }
     }
