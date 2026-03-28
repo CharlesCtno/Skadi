@@ -189,6 +189,47 @@ function getAdventurePopupAnchor(lng, lat) {
     return p.x < w / 2 ? 'left' : 'right';
 }
 
+/**
+ * Pans the map so the popup’s box stays inside the map container (with margin).
+ * Re-runs after images inside the popup load (layout may grow).
+ */
+function panMapToFitPopupInContainer(mbMap, popup, options) {
+    if (!mbMap || !popup) return;
+    const margin = options && options.margin != null ? options.margin : 16;
+    const duration = options && options.duration != null ? options.duration : 280;
+    const container = mbMap.getContainer();
+    const fit = () => {
+        const el = typeof popup.getElement === 'function' ? popup.getElement() : null;
+        if (!el || typeof el.getBoundingClientRect !== 'function') return;
+        const containerRect = container.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        const rightLimit = containerRect.right - margin;
+        const leftLimit = containerRect.left + margin;
+        const bottomLimit = containerRect.bottom - margin;
+        const topLimit = containerRect.top + margin;
+        let panX = 0;
+        let panY = 0;
+        if (r.right > rightLimit) panX += r.right - rightLimit;
+        if (r.left < leftLimit) panX -= leftLimit - r.left;
+        if (r.bottom > bottomLimit) panY += r.bottom - bottomLimit;
+        if (r.top < topLimit) panY -= topLimit - r.top;
+        if (panX !== 0 || panY !== 0) {
+            mbMap.panBy([panX, panY], { duration });
+        }
+    };
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            fit();
+            const el = typeof popup.getElement === 'function' ? popup.getElement() : null;
+            if (el) {
+                el.querySelectorAll('img').forEach((img) => {
+                    if (!img.complete) img.addEventListener('load', fit, { once: true });
+                });
+            }
+        });
+    });
+}
+
 function openAdventureLivePointPopup(props, coords) {
     if (!map || !coords || coords.length < 2) return;
     const html = buildAdventurePointPopupHtml(props, adventureLiveState.tripId || '');
@@ -200,7 +241,7 @@ function openAdventureLivePointPopup(props, coords) {
     const maxWidth = isEnrichedLayout
         ? 'min(936px, calc(100vw - 24px))'
         : 'min(420px, calc(100vw - 24px))';
-    new mapboxgl.Popup({
+    const popup = new mapboxgl.Popup({
         closeButton: true,
         closeOnClick: true,
         className: popupCls,
@@ -208,8 +249,11 @@ function openAdventureLivePointPopup(props, coords) {
         maxWidth
     })
         .setLngLat(coords)
-        .setHTML(html)
-        .addTo(map);
+        .setHTML(html);
+    popup.on('open', () => {
+        panMapToFitPopupInContainer(map, popup, { margin: 16 });
+    });
+    popup.addTo(map);
 }
 
 function buildAdventurePointsFeatureCollection(points) {
@@ -933,6 +977,7 @@ function createSummitMapboxMarker(lat, lng, color, isCompleted, popupHtml) {
     const m = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([lng, lat]).setPopup(popup);
 
     popup.on('open', function () {
+        panMapToFitPopupInContainer(map, popup, { margin: 16 });
         const container = popup.getElement();
         const closeBtn = container && container.querySelector('.summit-popup-close');
         if (!closeBtn) return;
@@ -2276,6 +2321,7 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
                     .setLngLat(e.lngLat)
                     .setHTML(track.popupContent);
                 p.on('open', function () {
+                    panMapToFitPopupInContainer(map, p, { margin: 16 });
                     const el = p.getElement && p.getElement();
                     const closeBtn = el ? el.querySelector('.track-popup-close') : null;
                     if (!closeBtn) return;
@@ -2358,6 +2404,7 @@ function focusOnGPXName(gpxName) {
                     .setLngLat([centerLng, centerLat])
                     .setHTML(track.popupContent);
                 p.on('open', function () {
+                    panMapToFitPopupInContainer(map, p, { margin: 16 });
                     const el = p.getElement && p.getElement();
                     const closeBtn = el ? el.querySelector('.track-popup-close') : null;
                     if (!closeBtn) return;
