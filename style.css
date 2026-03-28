@@ -181,6 +181,21 @@
   color: #fff;
 }
 
+/* Adventure enriched: one inset value on all sides (overrides global padding-right + Mapbox defaults). */
+.mapboxgl-popup.adventure-enriched-popup {
+  --adventure-popup-inner: 24px;
+}
+
+.mapboxgl-popup.adventure-enriched-popup .mapboxgl-popup-content {
+  padding: var(--adventure-popup-inner) !important;
+  box-sizing: border-box;
+}
+
+.mapboxgl-popup.adventure-enriched-popup .mapboxgl-popup-close-button {
+  top: calc(var(--adventure-popup-inner) * 0.5) !important;
+  right: calc(var(--adventure-popup-inner) * 0.5) !important;
+}
+
 /* Adventure enriched point popup: text + photo side by side on wide viewports */
 .mapboxgl-popup.adventure-enriched-popup .adventure-enriched-body {
   display: flex;
