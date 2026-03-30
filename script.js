@@ -493,7 +493,10 @@ function normalizeNotionPageId(value) {
 
 function notionHeaders() {
     const token = String(NOTION_TOKEN || '').trim();
-    if (!token || token === 'YOUR_NOTION_TOKEN_HERE') return null;
+    if (!token || token === 'YOUR_NOTION_TOKEN_HERE') {
+        console.error('[Skadi] Notion token missing in runtime bundle. Check deploy-pages secret injection for NOTION_TOKEN.');
+        return null;
+    }
     return {
         Authorization: `Bearer ${token}`,
         'Notion-Version': NOTION_API_VERSION,
@@ -708,7 +711,16 @@ function openJournalPanel(activityName, journalPath) {
             const html = renderNotionBlocksToHtml(blocks);
             contentEl.innerHTML = html || "Le récit de cette activité n'est pas encore disponible.";
         })
-        .catch((_err) => {
+        .catch((err) => {
+            const msg = String(err && err.message ? err.message : '');
+            if (msg.includes('NOTION_TOKEN non configuré')) {
+                contentEl.textContent = "Erreur de configuration: token Notion absent du déploiement.";
+                return;
+            }
+            if (msg.includes('Notion API (403)') || msg.includes('Notion API (404)')) {
+                contentEl.textContent = "Récit introuvable ou non partagé avec l'intégration Notion.";
+                return;
+            }
             contentEl.textContent = "Le récit de cette activité n'est pas encore disponible.";
         });
 }
@@ -768,8 +780,17 @@ function loadBikeJournalMarkdownInto(journalPath, contentEl) {
                 contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
             }
         })
-        .catch(() => {
+        .catch((err) => {
+            const msg = String(err && err.message ? err.message : '');
             contentEl.innerHTML = '';
+            if (msg.includes('NOTION_TOKEN non configuré')) {
+                contentEl.textContent = "Erreur de configuration: token Notion absent du déploiement.";
+                return;
+            }
+            if (msg.includes('Notion API (403)') || msg.includes('Notion API (404)')) {
+                contentEl.textContent = "Récit introuvable ou non partagé avec l'intégration Notion.";
+                return;
+            }
             contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
         });
 }
