@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: skadi-asset-guard
+        name: Skadi asset guard (blocked assets + file size)
+        entry: python scripts/check_blocked_assets.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]

@@ -93,6 +93,7 @@ const MAPBOX_ACCESS_TOKEN = 'YOUR_MAPBOX_TOKEN_HERE';
 const NOTION_TOKEN = 'YOUR_NOTION_TOKEN_HERE';
 const NOTION_API_VERSION = '2022-06-28';
 const NOTION_PAGE_ID_RE = /^[0-9a-fA-F]{32}$/;
+const NOTION_PAGE_ID_DASHED_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 /** Minimal raster style for local dev (no Mapbox vector tiles). */
 const SKADI_OSM_RASTER_STYLE = {
@@ -466,8 +467,28 @@ function resolveJournalFetchUrl(journalRelativePath) {
 }
 
 function isNotionPageId(value) {
+    return Boolean(normalizeNotionPageId(value));
+}
+
+/**
+ * Accepts:
+ * - 32-char raw Notion page id
+ * - dashed UUID form
+ * - Notion page URL containing the id
+ * Returns a normalized 32-char lowercase id, or empty string when invalid.
+ */
+function normalizeNotionPageId(value) {
     const raw = String(value || '').trim();
-    return NOTION_PAGE_ID_RE.test(raw);
+    if (!raw) return '';
+
+    if (NOTION_PAGE_ID_RE.test(raw)) return raw.toLowerCase();
+    if (NOTION_PAGE_ID_DASHED_RE.test(raw)) return raw.replace(/-/g, '').toLowerCase();
+
+    // Extract last 32 hex chars from URL/path style ids such as "...-<32hex>".
+    const m = raw.match(/([0-9a-fA-F]{32})(?:\b|[^0-9a-fA-F])/);
+    if (m && m[1]) return m[1].toLowerCase();
+
+    return '';
 }
 
 function notionHeaders() {
@@ -677,8 +698,8 @@ function openJournalPanel(activityName, journalPath) {
         if (map) map.invalidateSize();
     }, 320);
 
-    const pageId = String(journalPath || '').trim();
-    if (!isNotionPageId(pageId)) {
+    const pageId = normalizeNotionPageId(journalPath);
+    if (!pageId) {
         contentEl.textContent = "Le récit de cette activité n'est pas encore disponible.";
         return;
     }
@@ -734,8 +755,8 @@ function buildBikeJournalStatsHtml(entry) {
 }
 
 function loadBikeJournalMarkdownInto(journalPath, contentEl) {
-    const pageId = String(journalPath || '').trim();
-    if (!isNotionPageId(pageId)) {
+    const pageId = normalizeNotionPageId(journalPath);
+    if (!pageId) {
         contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
         return;
     }
@@ -1919,7 +1940,8 @@ function parseJournalEntry(value, options) {
     const inlineFallback = opts.inlineFallback !== false;
     const raw = normalizeJournalCell(value);
     if (!raw) return { kind: 'none', value: '' };
-    if (isNotionPageId(raw)) return { kind: 'notion', value: raw.toLowerCase() };
+    const notionPageId = normalizeNotionPageId(raw);
+    if (notionPageId) return { kind: 'notion', value: notionPageId };
     if (!inlineFallback) return { kind: 'none', value: '' };
     return { kind: 'text', value: raw };
 }

@@ -19,10 +19,18 @@ __pycache__/
 *.swo
 
 # Données brutes et fichiers temporaires
-#data/raw/*  # (Optionnel : si tu ne veux pas versionner les fichiers GPX/Excel bruts)
-#*.gpx
-#*.xlsx
-#*.xls
+data/raw/
+data/bike/raw/
+journal/photos/
+live/trips/*/photos/
+*.gpx
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.gif
+*.xlsx
+*.xls
 
 # Fichiers générés (GeoJSON, CSV traités)
 #data/processed/*  # (Optionnel : si ces fichiers sont régénérés automatiquement)

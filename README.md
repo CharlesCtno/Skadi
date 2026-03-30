@@ -110,6 +110,15 @@ Documentation quick links:
 - Prefer short-lived tokens and rotate regularly.
 - If a token is exposed, revoke it immediately and create a new one (already done in current setup).
 
+### Commit guardrails (post-migration)
+
+- `.gitignore` blocks raw GPX and photo upload paths: `data/raw/`, `data/bike/raw/`, `journal/photos/`, `live/trips/*/photos/`.
+- Optional pre-commit guard is available in `.pre-commit-config.yaml` and `scripts/check_blocked_assets.py`.
+- To enable locally:
+  - `pip install pre-commit`
+  - `pre-commit install`
+- The guard blocks staged files with forbidden patterns (`*.jpg`, `*.png`, `*.gpx`, etc.) and files larger than 10MB.
+
 ## Key Files
 
 - `index.html` – Map container, tabs (Sommets / Bikepacking), Skadi chatbot, legend, photo lightbox, summits journal panel, **immersive bike journal** shell
