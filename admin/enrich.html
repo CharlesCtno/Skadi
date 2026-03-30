@@ -219,52 +219,7 @@
       return relPath.split('/').map((s) => encodeURIComponent(s)).join('/');
     }
 
-    /**
-     * Upload JPEG via Contents API (avoids huge workflow_dispatch inputs for base64 photos).
-     * Requires PAT with Contents: Read and write (fine-grained).
-     */
-    async function putRepoJpeg(relPath, base64Jpeg, token) {
-      const apiPath = githubContentsSegments(relPath);
-      const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${apiPath}`;
-      const hdr = {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'Content-Type': 'application/json'
-      };
-      let sha;
-      const getRes = await fetch(url, { headers: hdr, cache: 'no-store' });
-      if (getRes.status === 200) {
-        const meta = await getRes.json();
-        sha = meta.sha;
-      } else if (getRes.status !== 404) {
-        const t = await getRes.text().catch(() => '');
-        if (getRes.status === 403) {
-          throw new Error(
-            '403 : le PAT n’a pas accès au dépôt. GitHub → Settings → Developer settings → ton token → Repository permissions → Contents : Read and write (dépôt Skadi). Puis rouvre la page et colle le token à jour.'
-          );
-        }
-        throw new Error(`Lecture fichier GitHub (${getRes.status}): ${t}`);
-      }
-      const body = {
-        message: `[adventure] enrich photo ${relPath}`,
-        content: base64Jpeg,
-        branch: 'main'
-      };
-      if (sha) body.sha = sha;
-      const putRes = await fetch(url, { method: 'PUT', headers: hdr, body: JSON.stringify(body) });
-      if (!putRes.ok) {
-        const t = await putRes.text().catch(() => '');
-        if (putRes.status === 403) {
-          throw new Error(
-            '403 : le PAT n’a pas la permission Contents. GitHub → ton fine-grained token → Repository permissions → Contents : Read and write sur Skadi. Enregistre, rouvre enrich.html et saisis le nouveau token.'
-          );
-        }
-        throw new Error(`Envoi photo (${putRes.status}): ${t}`);
-      }
-    }
-
-    function buildDispatchPayload(pointId, note, photoB64, photoUploaded) {
+    function buildDispatchPayload(pointId, note, photoB64) {
       return {
         ref: 'main',
         inputs: {
@@ -273,12 +228,12 @@
           point_id: pointId,
           note: note || '',
           photo: photoB64 || '',
-          photo_uploaded: photoUploaded ? 'true' : 'false'
+          photo_uploaded: 'false'
         }
       };
     }
 
-    async function dispatchEnrichPoint(pointId, note, photoB64, photoUploaded) {
+    async function dispatchEnrichPoint(pointId, note, photoB64) {
       if (!sessionToken.trim()) throw new Error('Token GitHub manquant');
       const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/actions/workflows/${GH_WORKFLOW}/dispatches`;
       const res = await fetch(url, {
@@ -289,7 +244,7 @@
           'X-GitHub-Api-Version': '2022-11-28',
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(buildDispatchPayload(pointId, note, photoB64, !!photoUploaded))
+        body: JSON.stringify(buildDispatchPayload(pointId, note, photoB64))
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => '');
@@ -438,22 +393,12 @@
             try {
               const note = textarea.value.trim();
               const selected = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
-              let photoB64 = selected ? await resizeImageBase64(selected) : '';
-              let photoUploaded = false;
-              if (photoB64) {
-                const relPath = `live/trips/${activeTripId}/photos/${pointId}.jpg`;
-                await putRepoJpeg(relPath, photoB64, sessionToken);
-                photoB64 = '';
-                photoUploaded = true;
-              }
-              await dispatchEnrichPoint(pointId, note, photoB64, photoUploaded);
+              const photoB64 = selected ? await resizeImageBase64(selected) : '';
+              await dispatchEnrichPoint(pointId, note, photoB64);
               point.note = note;
-              if (photoUploaded) {
-                point.photo = `live/trips/${activeTripId}/photos/${pointId}.jpg`;
-              }
               status.className = 'status ok';
-              status.textContent = 'Enregistré ✓';
-              renderPoints();
+              status.textContent = 'Enregistré ✓ (mise à jour en cours...)';
+              await loadData();
             } catch (err) {
               status.className = 'status err';
               const msg = err && err.message ? err.message : String(err);

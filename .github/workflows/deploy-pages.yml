@@ -31,9 +31,10 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Build site with Mapbox token
+      - name: Build site with Mapbox + Notion tokens
         env:
           MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
         run: |
           mkdir -p _site
           rsync -av --delete \
@@ -44,18 +45,26 @@ jobs:
           import os
           from pathlib import Path
 
-          token = os.environ.get("MAPBOX_TOKEN", "").strip()
-          if not token:
+          mapbox_token = os.environ.get("MAPBOX_TOKEN", "").strip()
+          notion_token = os.environ.get("NOTION_TOKEN", "").strip()
+          if not mapbox_token:
               raise SystemExit("Missing repository secret: MAPBOX_TOKEN")
+          if not notion_token:
+              raise SystemExit("Missing repository secret: NOTION_TOKEN")
 
           script_path = Path("_site/script.js")
           placeholder = "YOUR_MAPBOX_TOKEN_HERE"
+          notion_placeholder = "YOUR_NOTION_TOKEN_HERE"
           content = script_path.read_text(encoding="utf-8")
           if placeholder not in content:
               raise SystemExit(f"Placeholder '{placeholder}' not found in _site/script.js")
+          if notion_placeholder not in content:
+              raise SystemExit(f"Placeholder '{notion_placeholder}' not found in _site/script.js")
 
-          script_path.write_text(content.replace(placeholder, token), encoding="utf-8")
-          print("Injected MAPBOX_TOKEN into build artifact.")
+          content = content.replace(placeholder, mapbox_token)
+          content = content.replace(notion_placeholder, notion_token)
+          script_path.write_text(content, encoding="utf-8")
+          print("Injected MAPBOX_TOKEN and NOTION_TOKEN into build artifact.")
           PY
 
       - name: Upload Pages artifact

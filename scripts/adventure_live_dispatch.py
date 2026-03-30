@@ -1,12 +1,17 @@
 import argparse
 import base64
 import binascii
+import hashlib
 import json
+import os
 import re
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
+
+import requests
 
 
 ACTIVE_TRIP_PATH = Path("live/activeTrip.json")
@@ -150,6 +155,41 @@ def decode_photo_base64(photo_raw: str) -> bytes:
         raise ValueError(f"invalid base64 photo payload: {exc}") from exc
 
 
+def upload_photo_to_cloudinary(photo_bytes: bytes, trip_id: str, point_id: str) -> str:
+    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "").strip()
+    api_key = os.getenv("CLOUDINARY_API_KEY", "").strip()
+    api_secret = os.getenv("CLOUDINARY_API_SECRET", "").strip()
+    if not cloud_name or not api_key or not api_secret:
+        raise ValueError("Missing Cloudinary secrets (CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET)")
+
+    timestamp = str(int(time.time()))
+    folder = f"skadi/live/{trip_id}"
+    public_id = point_id
+    overwrite = "true"
+    to_sign = f"folder={folder}&overwrite={overwrite}&public_id={public_id}&timestamp={timestamp}{api_secret}"
+    signature = hashlib.sha1(to_sign.encode("utf-8")).hexdigest()
+    endpoint = f"https://api.cloudinary.com/v1_1/{cloud_name}/image/upload"
+    files = {
+        "file": (f"{point_id}.jpg", photo_bytes, "image/jpeg"),
+    }
+    data = {
+        "api_key": api_key,
+        "timestamp": timestamp,
+        "signature": signature,
+        "folder": folder,
+        "public_id": public_id,
+        "overwrite": overwrite,
+    }
+    res = requests.post(endpoint, data=data, files=files, timeout=60)
+    if not res.ok:
+        raise ValueError(f"Cloudinary upload failed ({res.status_code}): {res.text}")
+    payload = res.json()
+    secure_url = str(payload.get("secure_url") or "").strip()
+    if not secure_url:
+        raise ValueError("Cloudinary upload succeeded but secure_url is missing")
+    return secure_url
+
+
 def handle_enrich_point(
     trip_id: str, point_id: str, note: str, photo_raw: str, photo_uploaded: bool = False
 ) -> None:
@@ -178,28 +218,15 @@ def handle_enrich_point(
             target["note"] = note_value
             changed = True
 
-    photo_rel = f"live/trips/{trip_id}/photos/{point_id}.jpg"
     photo_bytes = decode_photo_base64(photo_raw)
     if photo_bytes:
-        photo_path = get_photo_path(trip_id, point_id)
-        existing = b""
-        if photo_path.exists():
-            existing = photo_path.read_bytes()
-        if existing != photo_bytes:
-            photo_path.parent.mkdir(parents=True, exist_ok=True)
-            photo_path.write_bytes(photo_bytes)
-        if str(target.get("photo") or "") != photo_rel:
-            target["photo"] = photo_rel
+        photo_url = upload_photo_to_cloudinary(photo_bytes, trip_id, point_id)
+        if str(target.get("photo") or "") != photo_url:
+            target["photo"] = photo_url
             target.pop("photos", None)
             changed = True
     elif photo_uploaded:
-        photo_path = get_photo_path(trip_id, point_id)
-        if not photo_path.exists():
-            raise ValueError("photo_uploaded set but JPEG not found in repo; upload via Contents API first")
-        if str(target.get("photo") or "") != photo_rel:
-            target["photo"] = photo_rel
-            target.pop("photos", None)
-            changed = True
+        raise ValueError("photo_uploaded is deprecated; send base64 photo input for Cloudinary upload")
 
     if changed:
         points[target_index] = target

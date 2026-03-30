@@ -90,6 +90,9 @@ let skadiLayerSerial = 0;
 const SKADI_SUMMIT_MARKER_Z_BASE = 420;
 
 const MAPBOX_ACCESS_TOKEN = 'YOUR_MAPBOX_TOKEN_HERE';
+const NOTION_TOKEN = 'YOUR_NOTION_TOKEN_HERE';
+const NOTION_API_VERSION = '2022-06-28';
+const NOTION_PAGE_ID_RE = /^[0-9a-fA-F]{32}$/;
 
 /** Minimal raster style for local dev (no Mapbox vector tiles). */
 const SKADI_OSM_RASTER_STYLE = {
@@ -462,6 +465,139 @@ function resolveJournalFetchUrl(journalRelativePath) {
     return new URL(path, window.location.href).href;
 }
 
+function isNotionPageId(value) {
+    const raw = String(value || '').trim();
+    return NOTION_PAGE_ID_RE.test(raw);
+}
+
+function notionHeaders() {
+    const token = String(NOTION_TOKEN || '').trim();
+    if (!token || token === 'YOUR_NOTION_TOKEN_HERE') return null;
+    return {
+        Authorization: `Bearer ${token}`,
+        'Notion-Version': NOTION_API_VERSION,
+        'Content-Type': 'application/json'
+    };
+}
+
+function escapeHtmlText(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function notionRichTextToHtml(richText) {
+    const arr = Array.isArray(richText) ? richText : [];
+    if (!arr.length) return '';
+    return arr.map((seg) => {
+        const ann = seg && seg.annotations ? seg.annotations : {};
+        const href = seg && seg.href ? String(seg.href) : '';
+        let out = escapeHtmlText(seg && seg.plain_text ? seg.plain_text : '');
+        if (ann.code) out = `<code>${out}</code>`;
+        if (ann.bold) out = `<strong>${out}</strong>`;
+        if (ann.italic) out = `<em>${out}</em>`;
+        if (ann.strikethrough) out = `<s>${out}</s>`;
+        if (ann.underline) out = `<u>${out}</u>`;
+        if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
+            out = `<a href="${escapeHtmlText(href)}" target="_blank" rel="noopener noreferrer">${out}</a>`;
+        }
+        return out;
+    }).join('');
+}
+
+function notionRichTextToPlain(richText) {
+    const arr = Array.isArray(richText) ? richText : [];
+    return arr.map((seg) => String((seg && seg.plain_text) || '')).join('');
+}
+
+async function fetchNotionPageBlocks(pageId) {
+    const headers = notionHeaders();
+    if (!headers) throw new Error('NOTION_TOKEN non configuré');
+    const all = [];
+    let cursor = '';
+    while (true) {
+        const qs = new URLSearchParams({ page_size: '100' });
+        if (cursor) qs.set('start_cursor', cursor);
+        const url = `https://api.notion.com/v1/blocks/${encodeURIComponent(pageId)}/children?${qs.toString()}`;
+        const res = await fetch(url, { headers, cache: 'no-store' });
+        if (!res.ok) {
+            const t = await res.text().catch(() => '');
+            throw new Error(`Notion API (${res.status}) ${t}`);
+        }
+        const payload = await res.json();
+        const results = Array.isArray(payload.results) ? payload.results : [];
+        all.push(...results);
+        if (!payload.has_more || !payload.next_cursor) break;
+        cursor = String(payload.next_cursor);
+    }
+    return all;
+}
+
+function renderNotionBlocksToHtml(blocks) {
+    const out = [];
+    const listState = { type: '', items: [] };
+    const flushList = () => {
+        if (!listState.items.length || !listState.type) return;
+        const tag = listState.type === 'numbered' ? 'ol' : 'ul';
+        out.push(`<${tag}>${listState.items.map((it) => `<li>${it}</li>`).join('')}</${tag}>`);
+        listState.type = '';
+        listState.items = [];
+    };
+    (blocks || []).forEach((b) => {
+        if (!b || !b.type) return;
+        const t = b.type;
+        const c = b[t] || {};
+        if (t === 'bulleted_list_item' || t === 'numbered_list_item') {
+            const nextType = t === 'numbered_list_item' ? 'numbered' : 'bulleted';
+            if (listState.type && listState.type !== nextType) flushList();
+            listState.type = nextType;
+            listState.items.push(notionRichTextToHtml(c.rich_text));
+            return;
+        }
+        flushList();
+        if (t === 'paragraph') {
+            out.push(`<p>${notionRichTextToHtml(c.rich_text)}</p>`);
+            return;
+        }
+        if (t === 'heading_1' || t === 'heading_2' || t === 'heading_3') {
+            const tag = t === 'heading_1' ? 'h2' : t === 'heading_2' ? 'h3' : 'h4';
+            out.push(`<${tag}>${notionRichTextToHtml(c.rich_text)}</${tag}>`);
+            return;
+        }
+        if (t === 'code') {
+            const lang = escapeHtmlText(c.language || '');
+            out.push(`<pre><code data-lang="${lang}">${escapeHtmlText(notionRichTextToPlain(c.rich_text))}</code></pre>`);
+            return;
+        }
+        if (t === 'image') {
+            const src = c.type === 'external'
+                ? String((c.external && c.external.url) || '')
+                : String((c.file && c.file.url) || '');
+            if (src && (src.startsWith('http://') || src.startsWith('https://'))) {
+                out.push(`<p><img src="${escapeHtmlText(src)}" alt="" loading="lazy"></p>`);
+            }
+            return;
+        }
+        out.push(`<p>${escapeHtmlText(notionRichTextToPlain(c.rich_text || []))}</p>`);
+    });
+    flushList();
+    return out.join('');
+}
+
+function notionBlocksToPlainText(blocks) {
+    const lines = [];
+    (blocks || []).forEach((b) => {
+        if (!b || !b.type) return;
+        const c = b[b.type] || {};
+        const txt = notionRichTextToPlain(c.rich_text || []);
+        if (txt.trim()) lines.push(txt.trim());
+    });
+    return lines.join('\n');
+}
+
 /**
  * Journal Markdown: configure marked once (raw HTML blocks pass through; GFM on).
  * DOMPurify is not used here so inline styles, floats, and <img src="..."> survive.
@@ -541,35 +677,15 @@ function openJournalPanel(activityName, journalPath) {
         if (map) map.invalidateSize();
     }, 320);
 
-    const safePath = String(journalPath || '').trim();
-    if (!safePath || !/^journal\//i.test(safePath)) {
+    const pageId = String(journalPath || '').trim();
+    if (!isNotionPageId(pageId)) {
         contentEl.textContent = "Le récit de cette activité n'est pas encore disponible.";
         return;
     }
-
-    const fetchUrl = resolveJournalFetchUrl(safePath);
-    fetch(fetchUrl)
-        .then((res) => {
-            if (!res.ok) throw new Error(`journal fetch failed: ${res.status}`);
-            return res.text();
-        })
-        .then((md) => {
-            const htmlOrPromise = renderMarkdownToHtml(md);
-            if (htmlOrPromise == null) {
-                contentEl.textContent = md;
-                return;
-            }
-            if (typeof htmlOrPromise.then === 'function') {
-                htmlOrPromise
-                    .then((html) => {
-                        contentEl.innerHTML = typeof html === 'string' ? html : String(html);
-                    })
-                    .catch(() => {
-                        contentEl.textContent = md;
-                    });
-                return;
-            }
-            contentEl.innerHTML = htmlOrPromise;
+    fetchNotionPageBlocks(pageId)
+        .then((blocks) => {
+            const html = renderNotionBlocksToHtml(blocks);
+            contentEl.innerHTML = html || "Le récit de cette activité n'est pas encore disponible.";
         })
         .catch((_err) => {
             contentEl.textContent = "Le récit de cette activité n'est pas encore disponible.";
@@ -618,37 +734,18 @@ function buildBikeJournalStatsHtml(entry) {
 }
 
 function loadBikeJournalMarkdownInto(journalPath, contentEl) {
-    const safePath = String(journalPath || '').trim();
-    if (!safePath || !/^journal\//i.test(safePath)) {
+    const pageId = String(journalPath || '').trim();
+    if (!isNotionPageId(pageId)) {
         contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
         return;
     }
-    const fetchUrl = resolveJournalFetchUrl(safePath);
     contentEl.innerHTML = '<p>Chargement du récit...</p>';
-
-    fetch(fetchUrl)
-        .then((res) => {
-            if (!res.ok) throw new Error(`journal fetch failed: ${res.status}`);
-            return res.text();
-        })
-        .then((md) => {
-            const htmlOrPromise = renderMarkdownToHtml(md);
-            contentEl.innerHTML = '';
-            if (htmlOrPromise == null) {
-                contentEl.textContent = md;
-                return;
+    fetchNotionPageBlocks(pageId)
+        .then((blocks) => {
+            contentEl.innerHTML = renderNotionBlocksToHtml(blocks) || '';
+            if (!contentEl.innerHTML) {
+                contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
             }
-            if (typeof htmlOrPromise.then === 'function') {
-                htmlOrPromise
-                    .then((html) => {
-                        contentEl.innerHTML = typeof html === 'string' ? html : String(html);
-                    })
-                    .catch(() => {
-                        contentEl.textContent = md;
-                    });
-                return;
-            }
-            contentEl.innerHTML = htmlOrPromise;
         })
         .catch(() => {
             contentEl.innerHTML = '';
@@ -1813,17 +1910,17 @@ function normalizeJournalCell(value) {
         .trim();
 }
 
-// Parse column T:
+// Parse journal cell:
 // - empty => none
-// - starts with "journal/" => markdown path
-// - otherwise => inline plain text for popup
-function parseJournalEntry(value) {
+// - strict Notion page id => notion
+// - otherwise => inline text (summits mixed mode)
+function parseJournalEntry(value, options) {
+    const opts = options || {};
+    const inlineFallback = opts.inlineFallback !== false;
     const raw = normalizeJournalCell(value);
     if (!raw) return { kind: 'none', value: '' };
-    if (/^journal\//i.test(raw)) {
-        const rest = raw.replace(/^journal\//i, '');
-        return { kind: 'path', value: 'journal/' + rest.replace(/^\/+/, '') };
-    }
+    if (isNotionPageId(raw)) return { kind: 'notion', value: raw.toLowerCase() };
+    if (!inlineFallback) return { kind: 'none', value: '' };
     return { kind: 'text', value: raw };
 }
 
@@ -1862,15 +1959,17 @@ function buildKeywordCacheInBackground(rows) {
             const rawPlainJournal = parsed.value;
             return Promise.resolve({ key, words: extractBoldKeywordsFromText(rawPlainJournal) });
         }
-        const url = resolveJournalFetchUrl(parsed.value);
-        return fetch(url)
-            .then((r) => {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.text();
-            })
-            .then((md) => ({ key, words: extractBoldKeywordsFromText(md) }))
+        if (parsed.kind === 'notion') {
+            return fetchNotionPageBlocks(parsed.value)
+                .then((blocks) => ({ key, words: extractBoldKeywordsFromText(notionBlocksToPlainText(blocks)) }))
+                .catch((err) => {
+                    console.warn('[Skadi] Notion keyword fetch failed:', parsed.value, err);
+                    return { key, words: [] };
+                });
+        }
+        return Promise.resolve({ key, words: [] })
             .catch((err) => {
-                console.warn('[Skadi] Journal keyword fetch failed:', url, err);
+                console.warn('[Skadi] Journal keyword fetch failed:', parsed.value, err);
                 return { key, words: [] };
             });
     });
@@ -2031,8 +2130,8 @@ function buildTrackPopupContent(gpxName, season, type, grade, distance, duration
     const photoBlock = hasPhotos
         ? (() => { const escaped = photoUrls.map(u => u.replace(/"/g, '&quot;')).join('|'); return ` <span class="popup-photos-row" data-photo-urls="${escaped}"><button type="button" class="popup-photos-btn" aria-label="Voir les photos">📸</button></span>`; })()
         : '';
-    const journal = parseJournalEntry(journalColumnT);
-    const journalButtonBlock = journal.kind === 'path'
+    const journal = parseJournalEntry(journalColumnT, { inlineFallback: true });
+    const journalButtonBlock = journal.kind === 'notion'
         ? ` <span class="popup-journal-row" data-journal-path="${escapeHtml(journal.value)}" data-journal-title="${escapeHtml(gpxName)}"><button type="button" class="popup-journal-btn" aria-label="Voir le récit">📖</button></span>`
         : '';
     const journalTextBlock = journal.kind === 'text'
@@ -2713,11 +2812,12 @@ function loadData() {
                         : getTrackColorByType(type);
 
                     const formattedDuration = formatDuration(duration);
+                    const bikeJournalParsed = parseJournalEntry(journalEntry, { inlineFallback: false });
                     const bikeImmersiveMeta =
-                        isBikeTab && /^journal\//i.test((journalEntry || '').trim())
+                        isBikeTab && bikeJournalParsed.kind === 'notion'
                             ? {
                                   etapeName: name.trim(),
-                                  journalPath: journalEntry.trim(),
+                                  journalPath: bikeJournalParsed.value,
                                   project,
                                   distance,
                                   duration,

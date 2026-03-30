@@ -78,6 +78,12 @@ Adventure mode now has an MVP "live trip" path for bikepacking:
   - `admin/enrich.html` (session GitHub token + note/photo submit; loads `live/` JSON from site root so it works under `/admin/`)
   - dispatches `enrich_point` through the same workflow endpoint
 
+Documentation quick links:
+- `docs/ADVENTURE_MODE_LIVE_SCHEMA.md` — live trip JSON contract (`activeTrip.json`, `points.json`) + enrichment (`note`, `photo`)
+- `docs/ADVENTURE_MODE_AUTOMATE_LOOP.md` — Android Automate loop for posting points (offline buffering + flush)
+- `docs/ADVENTURE_MODE_TASKER_MVP.md` — phone trigger request payloads for `workflow_dispatch` (start trip/day, add point, stop)
+- `docs/BIKE_SHEET_SCHEMA.md` — bikepacking CSV A–J schema and how it maps into the bike tab
+
 ### Triggering from phone (current setup)
 
 - Manual controls (HTTP Shortcuts):
