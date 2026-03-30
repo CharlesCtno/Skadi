@@ -481,6 +481,8 @@ function normalizeNotionPageId(value) {
 
     if (NOTION_PAGE_ID_RE.test(raw)) return raw.toLowerCase();
     if (NOTION_PAGE_ID_DASHED_RE.test(raw)) return raw.replace(/-/g, '').toLowerCase();
+    const dashedInText = raw.match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
+    if (dashedInText && dashedInText[0]) return dashedInText[0].replace(/-/g, '').toLowerCase();
 
     // Extract last 32 hex chars from URL/path style ids such as "...-<32hex>".
     const m = raw.match(/([0-9a-fA-F]{32})(?:\b|[^0-9a-fA-F])/);
@@ -735,26 +737,56 @@ function buildBikeJournalStatsHtml(entry) {
 }
 
 function loadBikeJournalMarkdownInto(journalPath, contentEl) {
-    const pageId = normalizeNotionPageId(journalPath);
-    if (!pageId) {
+    const raw = normalizeJournalCell(journalPath);
+    const pageId = normalizeNotionPageId(raw);
+    if (pageId) {
+        contentEl.innerHTML = '<p>Chargement du récit...</p>';
+        fetchNotionPageBlocks(pageId)
+            .then((blocks) => {
+                contentEl.innerHTML = renderNotionBlocksToHtml(blocks) || '';
+                if (!contentEl.innerHTML) {
+                    contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
+                }
+            })
+            .catch((err) => {
+                const msg = String(err && err.message ? err.message : '');
+                contentEl.innerHTML = '';
+                if (msg.includes('Notion cache (404)')) {
+                    contentEl.textContent = "Récit introuvable ou non partagé avec l'intégration Notion.";
+                    return;
+                }
+                contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
+            });
+        return;
+    }
+    if (!/^journal\/.+\.md$/i.test(raw)) {
         contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
         return;
     }
     contentEl.innerHTML = '<p>Chargement du récit...</p>';
-    fetchNotionPageBlocks(pageId)
-        .then((blocks) => {
-            contentEl.innerHTML = renderNotionBlocksToHtml(blocks) || '';
+    fetch(resolveJournalFetchUrl(raw), { cache: 'no-store' })
+        .then((response) => {
+            if (!response.ok) throw new Error(`Markdown fetch (${response.status})`);
+            return response.text();
+        })
+        .then((md) => {
+            const rendered = renderMarkdownToHtml(md);
+            if (rendered && typeof rendered.then === 'function') {
+                return rendered.then((html) => {
+                    contentEl.innerHTML = String(html || '').trim() || '';
+                    if (!contentEl.innerHTML) {
+                        contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
+                    }
+                });
+            }
+            contentEl.innerHTML = String(rendered || '').trim() || '';
             if (!contentEl.innerHTML) {
                 contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
             }
+            return null;
         })
-        .catch((err) => {
-            const msg = String(err && err.message ? err.message : '');
+        .catch(() => {
             contentEl.innerHTML = '';
-            if (msg.includes('Notion cache (404)')) {
-                contentEl.textContent = "Récit introuvable ou non partagé avec l'intégration Notion.";
-                return;
-            }
             contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
         });
 }
@@ -1931,6 +1963,15 @@ function parseJournalEntry(value, options) {
     return { kind: 'text', value: raw };
 }
 
+function parseBikeJournalEntry(value) {
+    const raw = normalizeJournalCell(value);
+    if (!raw) return { kind: 'none', value: '' };
+    const notionPageId = normalizeNotionPageId(raw);
+    if (notionPageId) return { kind: 'notion', value: notionPageId };
+    if (/^journal\/.+\.md$/i.test(raw)) return { kind: 'markdown', value: raw };
+    return { kind: 'none', value: '' };
+}
+
 function tokenizeBoldSegmentToKeywords(seg, set) {
     String(seg || '')
         .split(/\s+/)
@@ -2137,8 +2178,10 @@ function buildTrackPopupContent(gpxName, season, type, grade, distance, duration
     const photoBlock = hasPhotos
         ? (() => { const escaped = photoUrls.map(u => u.replace(/"/g, '&quot;')).join('|'); return ` <span class="popup-photos-row" data-photo-urls="${escaped}"><button type="button" class="popup-photos-btn" aria-label="Voir les photos">📸</button></span>`; })()
         : '';
-    const journal = parseJournalEntry(journalColumnT, { inlineFallback: true });
-    const journalButtonBlock = journal.kind === 'notion'
+    const journal = dataType === 'bike'
+        ? parseBikeJournalEntry(journalColumnT)
+        : parseJournalEntry(journalColumnT, { inlineFallback: true });
+    const journalButtonBlock = (journal.kind === 'notion' || journal.kind === 'markdown')
         ? ` <span class="popup-journal-row" data-journal-path="${escapeHtml(journal.value)}" data-journal-title="${escapeHtml(gpxName)}"><button type="button" class="popup-journal-btn" aria-label="Voir le récit">📖</button></span>`
         : '';
     const journalTextBlock = journal.kind === 'text'
@@ -2369,7 +2412,7 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
 
     const popupContent = buildTrackPopupContent(gpxName, season, type, grade, distance, duration, elevationGain, dataType, activityUrl, photoUrlsColumnS || '', journalColumnT || '');
     const journalMeta = parseJournalEntry(journalColumnT);
-    const opensBikeImmersive = !!(bikeImmersiveMeta && /^journal\//i.test(String(bikeImmersiveMeta.journalPath || '').trim()));
+    const opensBikeImmersive = !!bikeImmersiveMeta;
     // Apply wider minimum popup only when column T is plain text (summits / bike without immersive path).
     const popupOptions = journalMeta.kind === 'text'
         ? { className: 'journal-text-popup', minWidth: 520, maxWidth: 2000 }
@@ -2819,9 +2862,9 @@ function loadData() {
                         : getTrackColorByType(type);
 
                     const formattedDuration = formatDuration(duration);
-                    const bikeJournalParsed = parseJournalEntry(journalEntry, { inlineFallback: false });
+                    const bikeJournalParsed = parseBikeJournalEntry(journalEntry);
                     const bikeImmersiveMeta =
-                        isBikeTab && bikeJournalParsed.kind === 'notion'
+                        isBikeTab && (bikeJournalParsed.kind === 'notion' || bikeJournalParsed.kind === 'markdown')
                             ? {
                                   etapeName: name.trim(),
                                   journalPath: bikeJournalParsed.value,
