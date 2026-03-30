@@ -90,8 +90,6 @@ let skadiLayerSerial = 0;
 const SKADI_SUMMIT_MARKER_Z_BASE = 420;
 
 const MAPBOX_ACCESS_TOKEN = 'YOUR_MAPBOX_TOKEN_HERE';
-const NOTION_TOKEN = 'YOUR_NOTION_TOKEN_HERE';
-const NOTION_API_VERSION = '2022-06-28';
 const NOTION_PAGE_ID_RE = /^[0-9a-fA-F]{32}$/;
 const NOTION_PAGE_ID_DASHED_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -491,19 +489,6 @@ function normalizeNotionPageId(value) {
     return '';
 }
 
-function notionHeaders() {
-    const token = String(NOTION_TOKEN || '').trim();
-    if (!token || token === 'YOUR_NOTION_TOKEN_HERE') {
-        console.error('[Skadi] Notion token missing in runtime bundle. Check deploy-pages secret injection for NOTION_TOKEN.');
-        return null;
-    }
-    return {
-        Authorization: `Bearer ${token}`,
-        'Notion-Version': NOTION_API_VERSION,
-        'Content-Type': 'application/json'
-    };
-}
-
 function escapeHtmlText(value) {
     return String(value || '')
         .replace(/&/g, '&amp;')
@@ -538,26 +523,13 @@ function notionRichTextToPlain(richText) {
 }
 
 async function fetchNotionPageBlocks(pageId) {
-    const headers = notionHeaders();
-    if (!headers) throw new Error('NOTION_TOKEN non configuré');
-    const all = [];
-    let cursor = '';
-    while (true) {
-        const qs = new URLSearchParams({ page_size: '100' });
-        if (cursor) qs.set('start_cursor', cursor);
-        const url = `https://api.notion.com/v1/blocks/${encodeURIComponent(pageId)}/children?${qs.toString()}`;
-        const res = await fetch(url, { headers, cache: 'no-store' });
-        if (!res.ok) {
-            const t = await res.text().catch(() => '');
-            throw new Error(`Notion API (${res.status}) ${t}`);
-        }
-        const payload = await res.json();
-        const results = Array.isArray(payload.results) ? payload.results : [];
-        all.push(...results);
-        if (!payload.has_more || !payload.next_cursor) break;
-        cursor = String(payload.next_cursor);
+    const cacheUrl = resolveJournalFetchUrl(`notion/pages/${encodeURIComponent(pageId)}.json`);
+    const res = await fetch(cacheUrl, { cache: 'no-store' });
+    if (!res.ok) {
+        throw new Error(`Notion cache (${res.status})`);
     }
-    return all;
+    const payload = await res.json().catch(() => ({}));
+    return Array.isArray(payload.blocks) ? payload.blocks : [];
 }
 
 function renderNotionBlocksToHtml(blocks) {
@@ -713,11 +685,7 @@ function openJournalPanel(activityName, journalPath) {
         })
         .catch((err) => {
             const msg = String(err && err.message ? err.message : '');
-            if (msg.includes('NOTION_TOKEN non configuré')) {
-                contentEl.textContent = "Erreur de configuration: token Notion absent du déploiement.";
-                return;
-            }
-            if (msg.includes('Notion API (403)') || msg.includes('Notion API (404)')) {
+            if (msg.includes('Notion cache (404)')) {
                 contentEl.textContent = "Récit introuvable ou non partagé avec l'intégration Notion.";
                 return;
             }
@@ -783,11 +751,7 @@ function loadBikeJournalMarkdownInto(journalPath, contentEl) {
         .catch((err) => {
             const msg = String(err && err.message ? err.message : '');
             contentEl.innerHTML = '';
-            if (msg.includes('NOTION_TOKEN non configuré')) {
-                contentEl.textContent = "Erreur de configuration: token Notion absent du déploiement.";
-                return;
-            }
-            if (msg.includes('Notion API (403)') || msg.includes('Notion API (404)')) {
+            if (msg.includes('Notion cache (404)')) {
                 contentEl.textContent = "Récit introuvable ou non partagé avec l'intégration Notion.";
                 return;
             }
