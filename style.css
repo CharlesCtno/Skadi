@@ -771,6 +771,15 @@ body.journal-open #map {
   margin: 12px 0;
 }
 
+/* Notion "Code" blocks rendered as Markdown (see script.js notionCodeBlockTreatAsMarkdown) */
+.notion-markdown-from-code {
+  margin: 0 0 1.25em;
+}
+
+.notion-markdown-from-code:last-child {
+  margin-bottom: 0;
+}
+
 @media (max-width: 767px) {
   body.journal-open #map {
     width: 100%;

@@ -534,7 +534,32 @@ async function fetchNotionPageBlocks(pageId) {
     return Array.isArray(payload.blocks) ? payload.blocks : [];
 }
 
-function renderNotionBlocksToHtml(blocks) {
+/**
+ * Notion "Code" blocks are often used to paste whole Markdown récits.
+ * When language is empty or Markdown/plain, render with marked (same as journal/*.md).
+ * For Python, JS, etc., keep <pre><code>.
+ */
+function notionCodeBlockTreatAsMarkdown(language) {
+    const lang = String(language || '').trim().toLowerCase();
+    if (!lang) return true;
+    const compact = lang.replace(/\s+/g, '');
+    if (['markdown', 'md', 'gfm', 'commonmark'].includes(lang) || ['markdown', 'md', 'gfm'].includes(compact)) {
+        return true;
+    }
+    if (['plaintext', 'plain', 'text', 'txt'].includes(compact)) return true;
+    if (lang === 'plain text' || lang === 'plaintext') return true;
+    return false;
+}
+
+async function renderMarkdownToHtmlResolved(md) {
+    const raw = renderMarkdownToHtml(md);
+    if (raw && typeof raw.then === 'function') {
+        return String((await raw) || '').trim();
+    }
+    return String(raw || '').trim();
+}
+
+async function renderNotionBlocksToHtml(blocks) {
     const out = [];
     const listState = { type: '', items: [] };
     const flushList = () => {
@@ -544,8 +569,8 @@ function renderNotionBlocksToHtml(blocks) {
         listState.type = '';
         listState.items = [];
     };
-    (blocks || []).forEach((b) => {
-        if (!b || !b.type) return;
+    for (const b of blocks || []) {
+        if (!b || !b.type) continue;
         const t = b.type;
         const c = b[t] || {};
         if (t === 'bulleted_list_item' || t === 'numbered_list_item') {
@@ -553,22 +578,30 @@ function renderNotionBlocksToHtml(blocks) {
             if (listState.type && listState.type !== nextType) flushList();
             listState.type = nextType;
             listState.items.push(notionRichTextToHtml(c.rich_text));
-            return;
+            continue;
         }
         flushList();
         if (t === 'paragraph') {
             out.push(`<p>${notionRichTextToHtml(c.rich_text)}</p>`);
-            return;
+            continue;
         }
         if (t === 'heading_1' || t === 'heading_2' || t === 'heading_3') {
             const tag = t === 'heading_1' ? 'h2' : t === 'heading_2' ? 'h3' : 'h4';
             out.push(`<${tag}>${notionRichTextToHtml(c.rich_text)}</${tag}>`);
-            return;
+            continue;
         }
         if (t === 'code') {
-            const lang = escapeHtmlText(c.language || '');
-            out.push(`<pre><code data-lang="${lang}">${escapeHtmlText(notionRichTextToPlain(c.rich_text))}</code></pre>`);
-            return;
+            const plain = notionRichTextToPlain(c.rich_text);
+            if (notionCodeBlockTreatAsMarkdown(c.language)) {
+                const mdHtml = await renderMarkdownToHtmlResolved(plain);
+                if (mdHtml) {
+                    out.push(`<div class="notion-markdown-from-code">${mdHtml}</div>`);
+                    continue;
+                }
+            }
+            const langAttr = escapeHtmlText(c.language || '');
+            out.push(`<pre><code data-lang="${langAttr}">${escapeHtmlText(plain)}</code></pre>`);
+            continue;
         }
         if (t === 'image') {
             const src = c.type === 'external'
@@ -577,10 +610,10 @@ function renderNotionBlocksToHtml(blocks) {
             if (src && (src.startsWith('http://') || src.startsWith('https://'))) {
                 out.push(`<p><img src="${escapeHtmlText(src)}" alt="" loading="lazy"></p>`);
             }
-            return;
+            continue;
         }
         out.push(`<p>${escapeHtmlText(notionRichTextToPlain(c.rich_text || []))}</p>`);
-    });
+    }
     flushList();
     return out.join('');
 }
@@ -681,8 +714,8 @@ function openJournalPanel(activityName, journalPath) {
         return;
     }
     fetchNotionPageBlocks(pageId)
-        .then((blocks) => {
-            const html = renderNotionBlocksToHtml(blocks);
+        .then((blocks) => renderNotionBlocksToHtml(blocks))
+        .then((html) => {
             contentEl.innerHTML = html || "Le récit de cette activité n'est pas encore disponible.";
         })
         .catch((err) => {
@@ -742,8 +775,9 @@ function loadBikeJournalMarkdownInto(journalPath, contentEl) {
     if (pageId) {
         contentEl.innerHTML = '<p>Chargement du récit...</p>';
         fetchNotionPageBlocks(pageId)
-            .then((blocks) => {
-                contentEl.innerHTML = renderNotionBlocksToHtml(blocks) || '';
+            .then((blocks) => renderNotionBlocksToHtml(blocks))
+            .then((html) => {
+                contentEl.innerHTML = html || '';
                 if (!contentEl.innerHTML) {
                     contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
                 }
