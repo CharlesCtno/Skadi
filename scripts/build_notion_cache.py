@@ -131,6 +131,32 @@ def fetch_notion_blocks(page_id: str, token: str) -> list:
     return all_blocks
 
 
+def warn_notion_page_asset_issues(page_id: str, blocks: list) -> None:
+    """Log common causes of 404 images on static Pages + Notion JSON cache."""
+    for b in blocks or []:
+        if not isinstance(b, dict) or not b.get("type"):
+            continue
+        t = b["type"]
+        if t == "image":
+            img = b.get("image") or {}
+            if img.get("type") == "file":
+                print(
+                    f"[notion-cache] WARN {page_id}: Notion-uploaded image block — file URLs expire (~1h). "
+                    "Use Image → Link with a stable URL (e.g. Cloudinary secure URL)."
+                )
+        if t == "code":
+            code = b.get("code") or {}
+            rich = code.get("rich_text") or []
+            plain = "".join(
+                str(seg.get("plain_text") or "") for seg in rich if isinstance(seg, dict)
+            )
+            if "journal/photos" in plain or "journal\\photos" in plain:
+                print(
+                    f"[notion-cache] WARN {page_id}: Markdown references journal/photos/ — "
+                    "those files are not published on GitHub Pages. Use full https://res.cloudinary.com/... URL."
+                )
+
+
 def write_cache_file(out_dir: Path, page_id: str, blocks: list) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     target = out_dir / f"{page_id}.json"
@@ -172,6 +198,7 @@ def main() -> int:
     for page_id in sorted(notion_ids):
         try:
             blocks = fetch_notion_blocks(page_id, token)
+            warn_notion_page_asset_issues(page_id, blocks)
             write_cache_file(out_dir, page_id, blocks)
             ok += 1
             print(f"[notion-cache] cached {page_id} ({len(blocks)} blocks)")

@@ -629,6 +629,31 @@ function notionBlocksToPlainText(blocks) {
     return lines.join('\n');
 }
 
+/** Dev hint: common causes of journal image 404 on GitHub Pages. */
+function warnJournalImageSources(root) {
+    if (!root || typeof root.querySelectorAll !== 'function') return;
+    root.querySelectorAll('img[src]').forEach((img) => {
+        const src = (img.getAttribute('src') || '').trim();
+        if (!src) return;
+        const low = src.toLowerCase();
+        if (low.startsWith('journal/') || low.includes('/journal/photos/')) {
+            console.warn(
+                '[Skadi] Image likely 404: paths under journal/ are not deployed on Pages. Use full https://res.cloudinary.com/... (Secure URL from Cloudinary):',
+                src
+            );
+        }
+        if (
+            /amazonaws\.com/.test(low) &&
+            (/prod-files-secure|notion\.so|notionusercontent|x-amz-/.test(low))
+        ) {
+            console.warn(
+                '[Skadi] Notion-hosted image URLs expire (~1h); the static cache keeps old links → 404. Use Cloudinary: paste Secure URL in Markdown or Notion Image → Link.',
+                src.length > 120 ? `${src.slice(0, 120)}…` : src
+            );
+        }
+    });
+}
+
 /**
  * Journal Markdown: configure marked once (raw HTML blocks pass through; GFM on).
  * DOMPurify is not used here so inline styles, floats, and <img src="..."> survive.
@@ -717,6 +742,7 @@ function openJournalPanel(activityName, journalPath) {
         .then((blocks) => renderNotionBlocksToHtml(blocks))
         .then((html) => {
             contentEl.innerHTML = html || "Le récit de cette activité n'est pas encore disponible.";
+            warnJournalImageSources(contentEl);
         })
         .catch((err) => {
             const msg = String(err && err.message ? err.message : '');
@@ -780,6 +806,8 @@ function loadBikeJournalMarkdownInto(journalPath, contentEl) {
                 contentEl.innerHTML = html || '';
                 if (!contentEl.innerHTML) {
                     contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
+                } else {
+                    warnJournalImageSources(contentEl);
                 }
             })
             .catch((err) => {
@@ -810,12 +838,16 @@ function loadBikeJournalMarkdownInto(journalPath, contentEl) {
                     contentEl.innerHTML = String(html || '').trim() || '';
                     if (!contentEl.innerHTML) {
                         contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
+                    } else {
+                        warnJournalImageSources(contentEl);
                     }
                 });
             }
             contentEl.innerHTML = String(rendered || '').trim() || '';
             if (!contentEl.innerHTML) {
                 contentEl.textContent = "Le récit de cette étape n'est pas encore disponible.";
+            } else {
+                warnJournalImageSources(contentEl);
             }
             return null;
         })
