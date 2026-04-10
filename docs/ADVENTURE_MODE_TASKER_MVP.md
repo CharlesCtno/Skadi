@@ -65,6 +65,8 @@ This guide documents the MVP request format for Android Tasker to trigger Advent
 
 ### 3) Add point (phone GPS)
 
+Optional **`note`**: one-line caption stored on the new point (no separate `enrich_point`).
+
 ```json
 {
   "ref": "main",
@@ -74,7 +76,52 @@ This guide documents the MVP request format for Android Tasker to trigger Advent
     "trip_name": "",
     "lat": "46.5191",
     "lng": "6.6330",
-    "ts": "2026-03-27T10:12:00+01:00"
+    "ts": "2026-03-27T10:12:00+01:00",
+    "note": ""
+  }
+}
+```
+
+Example with caption:
+
+```json
+{
+  "ref": "main",
+  "inputs": {
+    "action": "add_point",
+    "trip_id": "2026-03-27_dream-adventure",
+    "trip_name": "",
+    "lat": "46.5191",
+    "lng": "6.6330",
+    "ts": "2026-03-27T10:12:00+01:00",
+    "note": "Pause à la frontière"
+  }
+}
+```
+
+### 3b) Enrich point (note / photo after the fact)
+
+Use the point’s **`ts`** as **`point_id`**.
+
+- **`note`**: text on the point.
+- **`photo`**: base64 JPEG (keep small; workflow input size limits).
+- **`photo_url`**: `https://...` if the image is already online (recommended for large photos: upload to Cloudinary from the phone with an **unsigned preset**, then pass `secure_url` here).
+
+```json
+{
+  "ref": "main",
+  "inputs": {
+    "action": "enrich_point",
+    "trip_id": "2026-03-27_dream-adventure",
+    "trip_name": "",
+    "lat": "",
+    "lng": "",
+    "ts": "",
+    "point_id": "2026-03-27T10:12:00+01:00",
+    "note": "Détail du stop",
+    "photo": "",
+    "photo_url": "https://res.cloudinary.com/your-cloud/image/upload/v123/folder/id.jpg",
+    "photo_uploaded": "false"
   }
 }
 ```

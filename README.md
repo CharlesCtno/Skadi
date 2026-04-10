@@ -76,7 +76,9 @@ Adventure mode now has an MVP "live trip" path for bikepacking:
   - see `docs/ADVENTURE_MODE_LIVE_SCHEMA.md`
 - Point enrichment admin page:
   - `admin/enrich.html` (session GitHub token + note/photo submit; loads `live/` JSON from site root so it works under `/admin/`)
-  - dispatches `enrich_point` through the same workflow endpoint
+  - dispatches `enrich_point` through the same workflow endpoint (base64 JPEG → Cloudinary → `secure_url` stored in `points.json`)
+- Optional on **`add_point`**: workflow input `note` attaches a one-line caption to the new GPS point.
+- Optional on **`enrich_point`**: workflow input `photo_url` (HTTPS) if the image was uploaded elsewhere (e.g. Cloudinary unsigned preset from the phone); see `docs/ADVENTURE_MODE_LIVE_SCHEMA.md`.
 
 Documentation quick links:
 - `docs/ADVENTURE_MODE_LIVE_SCHEMA.md` — live trip JSON contract (`activeTrip.json`, `points.json`) + enrichment (`note`, `photo`)
@@ -106,7 +108,8 @@ Documentation quick links:
 
 ### Security notes
 
-- Use a fine-grained PAT scoped only to this repository: **Actions (write)** for phone shortcuts, plus **Contents (read/write)** if you use `admin/enrich.html` to upload photos (GitHub Contents API).
+- Use a fine-grained PAT scoped only to this repository: **Actions (write)** for phone shortcuts and for `admin/enrich.html` (it dispatches workflows only; photos go to **Cloudinary**, not the GitHub repo).
+- **Contents (read/write)** is not required for the current enrichment flow; add it only if you use other automation that writes files via the Contents API.
 - Prefer short-lived tokens and rotate regularly.
 - If a token is exposed, revoke it immediately and create a new one (already done in current setup).
 

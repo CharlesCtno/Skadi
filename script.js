@@ -1587,7 +1587,13 @@ function parseCotationToIndex(gradeRaw) {
 const SKADI_MODE2_LOC_STD =
     '(?:pr[eè]s de|côté de|cote de|depuis|au[- ]dessus de|à côté de|a cote de|vers|dans les|dans le|en partant de|proche de)';
 const SKADI_MODE2_LOC_DAPOS = "proche d['\u2019]";
-const SKADI_MODE2_LOC_END = String.raw`(?=$|[.,;:!?]|\b(avec|et|pour|de)\b)`;
+/**
+ * End of place phrase: punctuation, constraint keywords, or start of numeric specs.
+ * - Dropped bare \\bde\\b so names like "La Tour de Peilz" are not cut at the first "de".
+ * - \\sde\\+\\d stops "Lausanne de 10km avec 1000m …" at "Lausanne".
+ * - \\s(?=\\d) stops "Annecy 15km …" before the distance number.
+ */
+const SKADI_MODE2_LOC_END = String.raw`(?=$|[.,;:!?]|\b(avec|et|pour)\b|\sde\s+\d|\s(?=\d))`;
 
 function extractLocationFromMessage(message) {
     const text = (message || '').trim();
@@ -1599,7 +1605,11 @@ function extractLocationFromMessage(message) {
     const match = text.match(reStd) || text.match(reDa);
     if (!match) return null;
 
-    const placeName = (match[1] || '').trim().replace(/^["']|["']$/g, '').trim();
+    let placeName = (match[1] || '').trim().replace(/^["']|["']$/g, '').trim();
+    if (!placeName) return null;
+    // Extra guard: strip " de <nombre>…" tail if it slipped through (locale / odd spacing).
+    placeName = placeName.replace(/\s+de\s+\d[\d\s.,]*(?:km|m|heures?|h)\b.*$/i, '').trim();
+    placeName = placeName.replace(/\s+\d[\d\s.,]*(?:km|m)\b.*$/i, '').trim();
     return placeName || null;
 }
 
@@ -3287,7 +3297,7 @@ Tu peux aussi demander l'avis de Charles en mentionnant son prénom.
 
 Pour tout réafficher sur la carte : écris « reset », « tous ».
 
-Exemple: "randonnée près de Lausanne autour de 15km avec 1000m de dénivelé"`;
+Exemple: "randonnée près de Lausanne de 15km en 3h avec 1000m de dénivelé"`;
 let skadiHelpShown = false;
 
 function parseLocalizedNumber(raw) {

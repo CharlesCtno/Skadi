@@ -47,17 +47,22 @@ on:
         required: false
         type: string
       note:
-        description: "Note text (optional for enrich_point)"
+        description: "Note text (optional for enrich_point; optional for add_point caption)"
         required: false
         default: ""
         type: string
       photo:
-        description: "Base64 encoded JPEG (optional for enrich_point)"
+        description: "Base64 encoded JPEG (optional for enrich_point; uploads to Cloudinary)"
+        required: false
+        default: ""
+        type: string
+      photo_url:
+        description: "HTTPS image URL for enrich_point (e.g. Cloudinary secure_url after phone unsigned upload)"
         required: false
         default: ""
         type: string
       photo_uploaded:
-        description: "Set true if photo was uploaded via Contents API (enrich_point)"
+        description: "Deprecated; use photo (base64) or photo_url. Legacy Contents API path removed."
         required: false
         default: "false"
         type: choice
@@ -109,6 +114,7 @@ jobs:
             --point-id "${{ inputs.point_id }}" \
             --note "${{ inputs.note }}" \
             --photo "${{ inputs.photo }}" \
+            --photo-url "${{ inputs.photo_url }}" \
             --photo-uploaded "${{ inputs.photo_uploaded }}"
 
       - name: Commit and push live state

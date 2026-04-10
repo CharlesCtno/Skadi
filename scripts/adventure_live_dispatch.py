@@ -191,7 +191,12 @@ def upload_photo_to_cloudinary(photo_bytes: bytes, trip_id: str, point_id: str) 
 
 
 def handle_enrich_point(
-    trip_id: str, point_id: str, note: str, photo_raw: str, photo_uploaded: bool = False
+    trip_id: str,
+    point_id: str,
+    note: str,
+    photo_raw: str,
+    photo_uploaded: bool = False,
+    photo_url_direct: str = "",
 ) -> None:
     point_id = (point_id or "").strip()
     if not point_id:
@@ -220,13 +225,24 @@ def handle_enrich_point(
 
     photo_bytes = decode_photo_base64(photo_raw)
     if photo_bytes:
-        photo_url = upload_photo_to_cloudinary(photo_bytes, trip_id, point_id)
-        if str(target.get("photo") or "") != photo_url:
-            target["photo"] = photo_url
+        uploaded_url = upload_photo_to_cloudinary(photo_bytes, trip_id, point_id)
+        if str(target.get("photo") or "") != uploaded_url:
+            target["photo"] = uploaded_url
             target.pop("photos", None)
             changed = True
-    elif photo_uploaded:
-        raise ValueError("photo_uploaded is deprecated; send base64 photo input for Cloudinary upload")
+    else:
+        url_in = (photo_url_direct or "").strip()
+        if url_in:
+            if not url_in.startswith("https://"):
+                raise ValueError("photo_url must be an https:// URL")
+            if str(target.get("photo") or "") != url_in:
+                target["photo"] = url_in
+                target.pop("photos", None)
+                changed = True
+        elif photo_uploaded:
+            raise ValueError(
+                "photo_uploaded is deprecated; send base64 photo for Cloudinary upload or photo_url (https)"
+            )
 
     if changed:
         points[target_index] = target
@@ -264,6 +280,7 @@ def main() -> int:
     parser.add_argument("--note", default="")
     parser.add_argument("--photo", default="")
     parser.add_argument("--photo-uploaded", default="false")
+    parser.add_argument("--photo-url", default="", help="HTTPS image URL for enrich_point (e.g. Cloudinary after phone upload)")
     args = parser.parse_args()
 
     try:
@@ -277,10 +294,20 @@ def main() -> int:
             handle_start_or_stop_live_day(trip_id, False)
         elif action == "add_point":
             point = parse_point(args.lat, args.lng, args.lon, args.ts, args.accuracy)
+            note_on_point = (args.note or "").strip()
+            if note_on_point:
+                point["note"] = note_on_point
             handle_add_point(trip_id, point)
         elif action == "enrich_point":
             photo_uploaded = (args.photo_uploaded or "").strip().lower() in ("true", "1", "yes")
-            handle_enrich_point(trip_id, args.point_id, args.note, args.photo, photo_uploaded=photo_uploaded)
+            handle_enrich_point(
+                trip_id,
+                args.point_id,
+                args.note,
+                args.photo,
+                photo_uploaded=photo_uploaded,
+                photo_url_direct=(args.photo_url or "").strip(),
+            )
         elif action == "stop_trip":
             handle_stop_trip(trip_id)
         else:

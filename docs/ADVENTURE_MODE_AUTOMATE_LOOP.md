@@ -86,10 +86,23 @@ Payload for live point:
     "lat": "46.5191",
     "lon": "6.6330",
     "accuracy": "11.2",
-    "ts": "2026-03-27T11:35:00+01:00"
+    "ts": "2026-03-27T11:35:00+01:00",
+    "note": ""
   }
 }
 ```
+
+Optional **`note`**: set a short caption on the same request (see `docs/ADVENTURE_MODE_LIVE_SCHEMA.md`).
+
+## Photo from the phone (large files)
+
+GitHub `workflow_dispatch` inputs are not suited to huge base64 blobs. Prefer:
+
+1. Upload the JPEG to Cloudinary from Automate (multipart `POST` to `https://api.cloudinary.com/v1_1/<cloud>/image/upload` with `upload_preset` and `file`).
+2. Read `secure_url` from the JSON response.
+3. Dispatch **`enrich_point`** with `point_id` = that point’s `ts`, `photo_url` = `secure_url`, `photo` = empty, `photo_uploaded` = `false`.
+
+See `docs/ADVENTURE_MODE_TASKER_MVP.md` §3b and `docs/ADVENTURE_MODE_LIVE_SCHEMA.md`.
 
 ## Reliability notes
 - Keep points in buffer until GitHub returns success.
