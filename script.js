@@ -17,6 +17,29 @@ let activityCatalog = [];
 let keywordCache = {};
 let keywordCacheBuilt = false;
 let activeRecommendationKeys = null;
+let skadiLoadLockToken = 0;
+let skadiLoadLockActive = false;
+
+function setLoadingOverlayVisible(visible) {
+    if (visible) {
+        skadiLoadLockActive = true;
+        document.body.classList.add('skadi-loading');
+    } else {
+        skadiLoadLockActive = false;
+        document.body.classList.remove('skadi-loading');
+    }
+}
+
+function beginTabDataLoadLock() {
+    skadiLoadLockToken += 1;
+    setLoadingOverlayVisible(true);
+    return skadiLoadLockToken;
+}
+
+function endTabDataLoadLock(lockToken) {
+    if (lockToken !== skadiLoadLockToken) return;
+    setLoadingOverlayVisible(false);
+}
 let latestFilterState = {
     activityType: 'all',
     status: 'all',
@@ -2186,6 +2209,19 @@ function activityMatchesUserKeywords(activity, userKeywords) {
     return false;
 }
 
+function getActivityKeywordMatchCount(activity, userKeywords) {
+    if (!userKeywords || userKeywords.length === 0) return 0;
+    const ck = (activity.columnDName || activity.name || '').trim();
+    const words = keywordCache[ck] || [];
+    if (!words.length) return 0;
+    const activityWords = new Set(words);
+    let count = 0;
+    for (const uk of userKeywords) {
+        if (activityWords.has(uk)) count += 1;
+    }
+    return count;
+}
+
 function markerHasKeywordMatch(marker, keywordTokens) {
     if (!keywordTokens || keywordTokens.length === 0) return true;
     if (!marker.activityKeys || marker.activityKeys.size === 0) return false;
@@ -2655,7 +2691,7 @@ function focusOnGPXName(gpxName) {
 }
 
 // Function to load data based on the current tab
-function loadData() {
+function loadData(lockToken) {
     // Clear existing markers and tracks
     markers.forEach(marker => map.removeLayer(marker.layer));
     tracks.forEach(track => {
@@ -2998,9 +3034,11 @@ function loadData() {
             } else {
                 applyFilters(latestFilterState);
             }
+            endTabDataLoadLock(lockToken);
         })
         .catch(error => {
             console.error('Error loading CSV:', error);
+            endTabDataLoadLock(lockToken);
         });
 }
 
@@ -3195,6 +3233,7 @@ if (applyFiltersBtn) {
 document.querySelectorAll('#tabs a').forEach(tab => {
     tab.addEventListener('click', function(e) {
         e.preventDefault();
+        if (skadiLoadLockActive) return;
 
         // Remove active class from all tabs
         document.querySelectorAll('#tabs a').forEach(t => t.classList.remove('active'));
@@ -3237,7 +3276,8 @@ document.querySelectorAll('#tabs a').forEach(tab => {
         }
 
         // Load data for the selected tab
-        loadData();
+        const lockToken = beginTabDataLoadLock();
+        loadData(lockToken);
 
         // Adjust map view based on the tab
         if (currentTab === 'bike') {
@@ -3763,6 +3803,7 @@ function getRecommendationMatches(intent) {
     const nameFilter = (filters.name || '').trim().toLowerCase();
 
     const hasLocation = !!(location && Number.isFinite(location.lat) && Number.isFinite(location.lon) && location.name);
+    const keywordBonusAlpha = 0.22;
 
     const candidates = activityCatalog.filter((activity) => {
         if (activity.dataType !== currentTab) return false;
@@ -3777,25 +3818,10 @@ function getRecommendationMatches(intent) {
     });
 
     let replyPrefix = null;
-    let poolForScoring = candidates;
-    let poolForRef = candidates;
-    let kwFilteredSmall = null;
-
     if (userKeywords.length > 0) {
         const kwFiltered = candidates.filter((a) => activityMatchesUserKeywords(a, userKeywords));
-        const kwCount = kwFiltered.length;
-        if (kwCount === 0) {
+        if (kwFiltered.length === 0) {
             replyPrefix = "Je n'ai pas trouvé d'activité avec ce mot-clé, voici les meilleures correspondances globales :";
-            poolForScoring = candidates;
-            poolForRef = candidates;
-        } else if (kwCount <= 2) {
-            replyPrefix = "J'ai trouvé peu d'activités avec ce mot-clé, voici mes meilleures suggestions :";
-            poolForScoring = candidates;
-            poolForRef = candidates;
-            kwFilteredSmall = kwFiltered;
-        } else {
-            poolForScoring = kwFiltered;
-            poolForRef = kwFiltered;
         }
     }
 
@@ -3803,7 +3829,7 @@ function getRecommendationMatches(intent) {
     let referenceDistanceKm = null;
     if (hasLocation) {
         let max = 0;
-        for (const activity of poolForRef) {
+        for (const activity of candidates) {
             const distKm = haversineDistanceKm(location.lat, location.lon, activity.summitLat, activity.summitLon);
             if (Number.isFinite(distKm)) max = Math.max(max, distKm);
         }
@@ -3831,15 +3857,20 @@ function getRecommendationMatches(intent) {
         }
 
         if (hasCotation) {
-            if (!Number.isFinite(activity.cotationIndex)) return { activity, score: Number.POSITIVE_INFINITY };
-            const diff = Math.abs(activity.cotationIndex - targetCotationIndex);
-            // Normalize "distance" on discrete T1..T6 to 0..1.
-            score += diff / 5;
+            if (Number.isFinite(activity.cotationIndex)) {
+                const diff = Math.abs(activity.cotationIndex - targetCotationIndex);
+                // Normalize "distance" on discrete T1..T6 to 0..1.
+                score += diff / 6;
+            }
         }
 
         if (hasLocation) {
             if (!Number.isFinite(distanceToLocationKm)) return { activity, score: Number.POSITIVE_INFINITY };
-            score += 3 * (distanceToLocationKm / referenceDistanceKm);
+            score += 2 * (distanceToLocationKm / referenceDistanceKm);
+        }
+        const kwCount = getActivityKeywordMatchCount(activity, userKeywords);
+        if (kwCount > 0) {
+            score -= keywordBonusAlpha * Math.log(1 + kwCount);
         }
         return { activity, score, distanceToLocationKm };
     }
@@ -3859,19 +3890,7 @@ function getRecommendationMatches(intent) {
             .slice(0, limit);
     }
 
-    if (kwFilteredSmall) {
-        const kwFiltered = kwFilteredSmall;
-        const scoredKw = sortAndLimit(kwFiltered.map(scoreActivityEntry), kwFiltered.length);
-        const selectedFromKw = scoredKw.map(toActivityOutput);
-        const pickedKeys = new Set(selectedFromKw.map((a) => a.key));
-        const restPool = candidates.filter((a) => !pickedKeys.has(a.key));
-        const need = Math.max(0, 3 - selectedFromKw.length);
-        const scoredRest = sortAndLimit(restPool.map(scoreActivityEntry), need);
-        const fromRest = scoredRest.map(toActivityOutput);
-        return { matches: [...selectedFromKw, ...fromRest].slice(0, 3), replyPrefix };
-    }
-
-    const scored = sortAndLimit(poolForScoring.map(scoreActivityEntry), 3);
+    const scored = sortAndLimit(candidates.map(scoreActivityEntry), 3);
     const matches = scored.map(toActivityOutput);
     return { matches, replyPrefix };
 }
@@ -4378,7 +4397,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     whenMapStyleReady(function () {
         map.setView([46.2, 7.5], 8);
-        loadData();
+        const lockToken = beginTabDataLoadLock();
+        loadData(lockToken);
         updateMap3DToggleButton();
         refreshAdventureLiveState('initial-load');
         updateAdventureUI();

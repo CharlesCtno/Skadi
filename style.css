@@ -1,3 +1,39 @@
+/* Full-screen loading lock while tab data/tracks are loading. */
+#app-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(16, 20, 24, 0.78);
+  backdrop-filter: blur(1.5px);
+  pointer-events: auto;
+}
+
+body.skadi-loading #app-loading-overlay {
+  display: flex;
+}
+
+.app-loading-overlay-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-loading-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-top-color: rgba(255, 255, 255, 0.95);
+  animation: skadi-loading-spin 0.75s linear infinite;
+}
+
+@keyframes skadi-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Popup photo icon (same line as activity name, icon only) */
 .popup-photos-row {
   display: inline;
