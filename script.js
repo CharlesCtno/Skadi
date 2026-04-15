@@ -3803,7 +3803,7 @@ function getRecommendationMatches(intent) {
     const nameFilter = (filters.name || '').trim().toLowerCase();
 
     const hasLocation = !!(location && Number.isFinite(location.lat) && Number.isFinite(location.lon) && location.name);
-    const keywordBonusAlpha = 0.22;
+    const keywordBonusAlpha = 0.15;
 
     const candidates = activityCatalog.filter((activity) => {
         if (activity.dataType !== currentTab) return false;
