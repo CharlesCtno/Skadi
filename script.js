@@ -19,6 +19,9 @@ let keywordCacheBuilt = false;
 let activeRecommendationKeys = null;
 let skadiLoadLockToken = 0;
 let skadiLoadLockActive = false;
+const DEFAULT_MAP_CENTER = [46.207373, 6.952334];
+const DEFAULT_SUMMITS_ZOOM = 7.8; // ~10% less than previous 8
+const DEFAULT_BIKE_ZOOM = 5.4; // ~10% less than previous 6
 
 function setLoadingOverlayVisible(visible) {
     if (visible) {
@@ -3281,9 +3284,9 @@ document.querySelectorAll('#tabs a').forEach(tab => {
 
         // Adjust map view based on the tab
         if (currentTab === 'bike') {
-            map.setView([46.2, 7.5], 6); // More zoomed out for bike trips
+            map.setView(DEFAULT_MAP_CENTER, DEFAULT_BIKE_ZOOM); // More zoomed out for bike trips
         } else {
-            map.setView([46.2, 7.5], 8); // Default view for summits
+            map.setView(DEFAULT_MAP_CENTER, DEFAULT_SUMMITS_ZOOM); // Default view for summits
         }
 
         updateMap3DToggleButton();
@@ -3484,9 +3487,9 @@ function resetMapForChatQuery() {
     latestFilterState = { activityType: 'all', status: 'all', season: 'all', name: '' };
     applyFilters(latestFilterState);
     if (currentTab === 'bike') {
-        map.setView([46.2, 7.5], 6);
+        map.setView(DEFAULT_MAP_CENTER, DEFAULT_BIKE_ZOOM);
     } else {
-        map.setView([46.2, 7.5], 8);
+        map.setView(DEFAULT_MAP_CENTER, DEFAULT_SUMMITS_ZOOM);
     }
 }
 
@@ -4396,7 +4399,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     whenMapStyleReady(function () {
-        map.setView([46.2, 7.5], 8);
+        map.setView(DEFAULT_MAP_CENTER, DEFAULT_SUMMITS_ZOOM);
         const lockToken = beginTabDataLoadLock();
         loadData(lockToken);
         updateMap3DToggleButton();
