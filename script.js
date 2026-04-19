@@ -1716,6 +1716,23 @@ function normalizeGpxBaseName(value) {
         .replace(/\.gpx$/i, '');
 }
 
+/**
+ * Resolve a path relative to the deployed site root. Fixes GitHub Pages project URLs
+ * opened as /RepoName (no trailing slash): a bare "data/foo.geojson" would otherwise
+ * resolve to /data/foo.geojson on the host instead of /RepoName/data/foo.geojson.
+ */
+function resolveSiteRelativeAssetUrl(relativePath) {
+    let pathname = (window.location.pathname || '/').split(/[?#]/)[0];
+    if (!pathname.endsWith('/')) {
+        if (/\.[a-z0-9]+$/i.test(pathname)) {
+            pathname = pathname.replace(/\/[^/]+$/, '/');
+        } else {
+            pathname += '/';
+        }
+    }
+    return new URL(relativePath, window.location.origin + pathname).href;
+}
+
 // Define colors for each project
 const projectColors = {
     'Proxima': '#45818e',
@@ -2511,7 +2528,10 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
 
     const cacheKey = `${dataType}:${gpxBaseName}`;
     if (!geojsonDataPromiseCache[cacheKey]) {
-        geojsonDataPromiseCache[cacheKey] = fetchGeoJsonWithRetry(`${dataPath}${gpxBaseName}.geojson`, 3)
+        geojsonDataPromiseCache[cacheKey] = fetchGeoJsonWithRetry(
+            resolveSiteRelativeAssetUrl(`${dataPath}${gpxBaseName}.geojson`),
+            3
+        )
             .then(response => {
                 if (!response.ok) {
                     throw new Error(`Failed to load GeoJSON: ${response.status} ${response.statusText}`);
