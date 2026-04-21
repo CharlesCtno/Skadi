@@ -2505,6 +2505,36 @@ function fetchGeoJsonWithRetry(url, maxAttempts) {
     return tryOnce(1);
 }
 
+function buildGeoJsonBaseNameCandidates(baseName) {
+    const raw = String(baseName || '').trim();
+    if (!raw) return [];
+    const out = [raw];
+    const firstLower = raw.charAt(0).toLowerCase() + raw.slice(1);
+    if (!out.includes(firstLower)) out.push(firstLower);
+    const allLower = raw.toLowerCase();
+    if (!out.includes(allLower)) out.push(allLower);
+    return out;
+}
+
+function fetchGeoJsonByBaseNameWithFallback(dataPath, gpxBaseName) {
+    const candidates = buildGeoJsonBaseNameCandidates(gpxBaseName);
+    let idx = 0;
+    const tryNext = () => {
+        if (idx >= candidates.length) {
+            throw new Error(`Failed to load GeoJSON for any candidate: ${candidates.join(', ')}`);
+        }
+        const candidate = candidates[idx++];
+        const url = resolveSiteRelativeAssetUrl(`${dataPath}${candidate}.geojson`);
+        return fetchGeoJsonWithRetry(url, 3).then((response) => {
+            if (!response.ok) {
+                return tryNext();
+            }
+            return response.json();
+        });
+    };
+    return tryNext();
+}
+
 // Function to load GeoJSON files dynamically
 /** @param bikeImmersiveMeta {object|null} When set (bike + journal/ path), track opens immersive view on click instead of popup. */
 function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, elevationGain, gpxName, dataType, activityUrl, photoUrlsColumnS, journalColumnT, bikeImmersiveMeta, rowIndex) {
@@ -2528,16 +2558,7 @@ function loadGeoJSON(gpxFile, color, season, type, grade, distance, duration, el
 
     const cacheKey = `${dataType}:${gpxBaseName}`;
     if (!geojsonDataPromiseCache[cacheKey]) {
-        geojsonDataPromiseCache[cacheKey] = fetchGeoJsonWithRetry(
-            resolveSiteRelativeAssetUrl(`${dataPath}${gpxBaseName}.geojson`),
-            3
-        )
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`Failed to load GeoJSON: ${response.status} ${response.statusText}`);
-                }
-                return response.json();
-            })
+        geojsonDataPromiseCache[cacheKey] = fetchGeoJsonByBaseNameWithFallback(dataPath, gpxBaseName)
             .catch((err) => {
                 // If the fetch failed, allow future rows to retry.
                 delete geojsonDataPromiseCache[cacheKey];
