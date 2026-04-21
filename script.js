@@ -2015,7 +2015,12 @@ function processSheetToSummitsRows(sheetCsvText) {
 function isLikelyImageUrl(url) {
     try {
         const u = new URL(url);
+        // Keep any absolute web URL. Some providers serve image bytes from URLs
+        // without a file extension (signed/CDN links), which our previous extension
+        // check incorrectly discarded.
         if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+        return true;
+        /*
         const pathname = u.pathname.toLowerCase();
         // Accept common image extensions used by Strava/CDN photos.
         if (/\.(jpg|jpeg|png|webp|gif|avif)(?:$|\?)/i.test(pathname)) return true;
@@ -2023,6 +2028,7 @@ function isLikelyImageUrl(url) {
         const format = (u.searchParams.get('format') || '').toLowerCase();
         if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'].includes(format)) return true;
         return false;
+        */
     } catch (_err) {
         return false;
     }
