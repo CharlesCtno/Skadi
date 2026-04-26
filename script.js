@@ -4244,23 +4244,31 @@ function initPhotoSwipeLightbox() {
         return window._pswpPhotoItems[index];
     });
 
-    // Close automatically when the user reaches the last photo.
-    // Prevents the previous "loop forever" UX where navigation wraps back to the start.
-    const closeIfLast = function () {
-        const pswp = photoSwipeLightbox.pswp;
-        if (!pswp) return;
-        const itemsLen = (window._pswpPhotoItems && window._pswpPhotoItems.length) || 0;
-        if (!itemsLen || itemsLen <= 1) return;
-        const curr = typeof pswp.currIndex === 'number'
-            ? pswp.currIndex
-            : (typeof pswp.getCurrentIndex === 'function' ? pswp.getCurrentIndex() : 0);
-        if (curr === itemsLen - 1 && typeof pswp.close === 'function') {
-            pswp.close();
-        }
-    };
-
-    // PhotoSwipe lightbox emits 'change' when index changes.
-    photoSwipeLightbox.on('change', closeIfLast);
+    // Close only when the user clicks "next" while already on the last slide (not when navigating *to* the last slide).
+    // PhotoSwipe's `change` fires on every index change; closing on `curr === last` broke that navigation.
+    document.body.addEventListener(
+        'click',
+        function onPhotoSwipeNextArrowClick(e) {
+            if (!e.target.closest('.pswp__button--arrow--next')) return;
+            const lb = photoSwipeLightbox;
+            if (!lb) return;
+            const pswp = lb.pswp;
+            if (!pswp) return;
+            const itemsLen = (window._pswpPhotoItems && window._pswpPhotoItems.length) || 0;
+            if (itemsLen <= 1) return;
+            const curr =
+                typeof pswp.currIndex === 'number'
+                    ? pswp.currIndex
+                    : typeof pswp.getCurrentIndex === 'function'
+                      ? pswp.getCurrentIndex()
+                      : 0;
+            if (curr !== itemsLen - 1) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            if (typeof pswp.close === 'function') pswp.close();
+        },
+        true
+    );
 
     photoSwipeLightbox.init();
 }

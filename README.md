@@ -12,7 +12,7 @@ An **English UI toggle** is not planned as a requirement, only a possible long-t
 
 - **Frontend:** Single-page HTML + vanilla JS (`index.html`, `script.js`), Leaflet map, no build step
 - **Data:** Google Sheet (published CSV) as source of truth + GeoJSON track files
-- **Pipeline:** Strava → GitHub Actions → Google Sheet + GPX files → auto-converted to GeoJSON → site refreshes
+- **Pipeline:** Strava → GitHub Actions → Google Sheet + GPX files → auto-converted to GeoJSON → **Deploy GitHub Pages** runs after a successful **Strava Sync (Manual)** (and after **Adventure Live Dispatch**), because commits made with the default `GITHUB_TOKEN` do not trigger `on: push` workflows
 - **Hosting:** GitHub Pages
 - **Basemap:** Mapbox **Outdoors** (`mapbox/outdoors-v12`) via Leaflet — set `MAPBOX_ACCESS_TOKEN` in `script.js` (create a token at [mapbox.com](https://www.mapbox.com/), restrict URLs to `https://charlesctno.github.io` and `http://localhost` for local dev)
 
@@ -141,7 +141,7 @@ Documentation quick links:
 - `.github/workflows/strava_sync.yml` – Manual trigger: activity name + destination (`sommets` / `bikepacking`), runs full sync
 - `.github/workflows/convert_gpx.yml` – Auto-triggered when GPX files are pushed to raw folders
 - `.github/workflows/adventure_live_dispatch.yml` – Manual/API dispatch endpoint for phone-triggered live updates
-- `.github/workflows/deploy-pages.yml` – Deploys site on push and after successful Adventure Live Dispatch runs
+- `.github/workflows/deploy-pages.yml` – Deploys site on push to `main`, manual dispatch, and after successful **Adventure Live Dispatch** or **Strava Sync (Manual)** runs (`workflow_run`)
 
 ## Conventions
 

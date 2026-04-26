@@ -39,6 +39,10 @@ live/trips/*/photos/
 *.log
 .DS_Store
 
+# Export local de transcripts Cursor (ne pas versionner)
+RECOVERED_AGENT_CHAT.txt
+recovered_agent_chat.txt
+
 # Fichiers de dépendances (optionnel : à versionner si partagé)
 requirements.txt  # (À versionner si tu l'utilises)
 test.temp
