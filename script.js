@@ -4228,6 +4228,39 @@ function resolvePhotoItems(urls) {
     return Promise.all(urls.map(loadPhotoItemWithDimensions));
 }
 
+/** Track-popup PhotoSwipe only: multi-item gallery, lightbox open. */
+function getTrackPhotoSwipeBoundaryContext() {
+    const lb = photoSwipeLightbox;
+    if (!lb) return null;
+    const pswp = lb.pswp;
+    if (!pswp || !document.querySelector('.pswp--open')) return null;
+    const itemsLen = (window._pswpPhotoItems && window._pswpPhotoItems.length) || 0;
+    if (itemsLen <= 1) return null;
+    const curr =
+        typeof pswp.currIndex === 'number'
+            ? pswp.currIndex
+            : typeof pswp.getCurrentIndex === 'function'
+              ? pswp.getCurrentIndex()
+              : 0;
+    return { pswp, itemsLen, curr };
+}
+
+function tryCloseTrackPhotoSwipeOnForwardPastEnd(e) {
+    const ctx = getTrackPhotoSwipeBoundaryContext();
+    if (!ctx || ctx.curr !== ctx.itemsLen - 1) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (typeof ctx.pswp.close === 'function') ctx.pswp.close();
+}
+
+function tryCloseTrackPhotoSwipeOnBackPastStart(e) {
+    const ctx = getTrackPhotoSwipeBoundaryContext();
+    if (!ctx || ctx.curr !== 0) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (typeof ctx.pswp.close === 'function') ctx.pswp.close();
+}
+
 function initPhotoSwipeLightbox() {
     if (typeof PhotoSwipeLightbox === 'undefined' || typeof PhotoSwipe === 'undefined') return;
     if (photoSwipeLightbox) return;
@@ -4244,28 +4277,30 @@ function initPhotoSwipeLightbox() {
         return window._pswpPhotoItems[index];
     });
 
-    // Close only when the user clicks "next" while already on the last slide (not when navigating *to* the last slide).
-    // PhotoSwipe's `change` fires on every index change; closing on `curr === last` broke that navigation.
+    // Close only when already on the last/first slide and user goes "next"/"prev" again (click or keyboard).
+    // PhotoSwipe `change` is not used: it also fires when navigating *to* the last slide.
     document.body.addEventListener(
         'click',
-        function onPhotoSwipeNextArrowClick(e) {
-            if (!e.target.closest('.pswp__button--arrow--next')) return;
-            const lb = photoSwipeLightbox;
-            if (!lb) return;
-            const pswp = lb.pswp;
-            if (!pswp) return;
-            const itemsLen = (window._pswpPhotoItems && window._pswpPhotoItems.length) || 0;
-            if (itemsLen <= 1) return;
-            const curr =
-                typeof pswp.currIndex === 'number'
-                    ? pswp.currIndex
-                    : typeof pswp.getCurrentIndex === 'function'
-                      ? pswp.getCurrentIndex()
-                      : 0;
-            if (curr !== itemsLen - 1) return;
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            if (typeof pswp.close === 'function') pswp.close();
+        function onPhotoSwipeArrowClick(e) {
+            if (e.target.closest('.pswp__button--arrow--next')) {
+                tryCloseTrackPhotoSwipeOnForwardPastEnd(e);
+                return;
+            }
+            if (e.target.closest('.pswp__button--arrow--prev')) {
+                tryCloseTrackPhotoSwipeOnBackPastStart(e);
+            }
+        },
+        true
+    );
+
+    window.addEventListener(
+        'keydown',
+        function onPhotoSwipeBoundaryKey(e) {
+            if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+            const el = e.target;
+            if (el && el.closest && el.closest('input, textarea, select, [contenteditable="true"]')) return;
+            if (e.key === 'ArrowRight') tryCloseTrackPhotoSwipeOnForwardPastEnd(e);
+            else tryCloseTrackPhotoSwipeOnBackPastStart(e);
         },
         true
     );
