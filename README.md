@@ -12,7 +12,7 @@ An **English UI toggle** is not planned as a requirement, only a possible long-t
 
 - **Frontend:** Single-page HTML + vanilla JS (`index.html`, `script.js`), Leaflet map, no build step
 - **Data:** Google Sheet (published CSV) as source of truth + GeoJSON track files
-- **Pipeline:** Strava → GitHub Actions → Google Sheet + GPX files → auto-converted to GeoJSON → **Deploy GitHub Pages** runs after a successful **Strava Sync (Manual)** (and after **Adventure Live Dispatch**), because commits made with the default `GITHUB_TOKEN` do not trigger `on: push` workflows
+- **Pipeline:** Strava/Komoot manual sync → GitHub Actions → Google Sheet + GPX files → auto-converted to GeoJSON → **Deploy GitHub Pages** runs after a successful **Strava Sync (Manual)** (and after **Adventure Live Dispatch**), because commits made with the default `GITHUB_TOKEN` do not trigger `on: push` workflows
 - **Hosting:** GitHub Pages
 - **Basemap:** Mapbox **Outdoors** (`mapbox/outdoors-v12`) via Leaflet — set `MAPBOX_ACCESS_TOKEN` in `script.js` (create a token at [mapbox.com](https://www.mapbox.com/), restrict URLs to `https://charlesctno.github.io` and `http://localhost` for local dev)
 
@@ -133,12 +133,12 @@ Documentation quick links:
 - `docs/ADVENTURE_MODE_TASKER_MVP.md` – Phone trigger request templates for HTTP Shortcuts / Automate
 - `docs/ADVENTURE_MODE_AUTOMATE_LOOP.md` – Automate background loop + offline buffer strategy
 - `admin/enrich.html` – Mobile admin page (session token) to enrich points with note/photo; resolves `live/` paths from repo root
-- `scripts/strava_sync.py` – Fetches a named Strava activity; `--destination sommets|bikepacking` selects Progrès (OSM, summits layout) vs Bikepacking (A–J, no OSM); pushes GPX to `data/raw/` or `data/bike/raw/`
+- `scripts/strava_sync.py` – Manual sync entrypoint for Strava or Komoot; `--source strava|komoot`, `--activity-ref "<exact Strava name or Komoot URL>"`, and `--destination sommets|bikepacking` select source + sheet target; pushes GPX to `data/raw/` or `data/bike/raw/`. For `source=komoot` on Sommets, matching uses column `P` URL first, then falls back to summit name in column `D`.
 - `scripts/strava_backfill_photos.py` – One-time backfill of photo URLs into column S for existing activities
 - `scripts/convert_gpx.py` – Converts GPX files to GeoJSON (run automatically via GitHub Actions)
 - `scripts/adventure_live_dispatch.py` – Applies live trip actions (`start_trip`, `start_live_day`, `add_point`, `enrich_point`, `stop_live_day`, `stop_trip`)
 - `scripts/test_sheet_sync.py` – Local test script to simulate a Strava sync without API calls
-- `.github/workflows/strava_sync.yml` – Manual trigger: activity name + destination (`sommets` / `bikepacking`), runs full sync
+- `.github/workflows/strava_sync.yml` – Manual trigger: source (`strava` / `komoot`) + activity reference (Strava exact name or Komoot URL) + destination (`sommets` / `bikepacking`), runs full sync
 - `.github/workflows/convert_gpx.yml` – Auto-triggered when GPX files are pushed to raw folders
 - `.github/workflows/adventure_live_dispatch.yml` – Manual/API dispatch endpoint for phone-triggered live updates
 - `.github/workflows/deploy-pages.yml` – Deploys site on push to `main`, manual dispatch, and after successful **Adventure Live Dispatch** or **Strava Sync (Manual)** runs (`workflow_run`)
@@ -159,7 +159,7 @@ Documentation quick links:
 | ✅ | Static map with Leaflet, summit + bike tabs |
 | ✅ | Google Sheet as live data source (no local scripts) |
 | ✅ | GitHub Actions GPX → GeoJSON conversion |
-| ✅ | Strava sync via manual GitHub Actions trigger (search by activity name) |
+| ✅ | Manual sync via GitHub Actions trigger (Strava exact-name or Komoot URL) |
 | ✅ | OpenStreetMap auto-fill for altitude and coordinates |
 | ✅ | Season and activity type auto-filled in French |
 | ✅ | Status auto-cleared on sync (à faire → completed) |

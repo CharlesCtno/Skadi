@@ -3369,7 +3369,7 @@ if (downloadCsvBtn) {
     });
 }
 
-const SKADI_HELP_MESSAGE = `Bonjour ! Je suis Skadi, ton guide dans la montagne. Tu peux me parler de ce que tu cherches de deux façons :
+const SKADI_HELP_MESSAGE = `Bonjour ! Je suis Jenna, ton guide dans la montagne. Tu peux me parler de ce que tu cherches de deux façons :
 Pour filtrer la carte, dis-moi par exemple :
 
 "randonnée en été"

@@ -32,7 +32,7 @@ If distances/durations use **European decimals** (`180,8`) **without** quoting t
 ## Data pipeline
 
 - **GPX → GeoJSON:** `scripts/convert_gpx.py` writes `data/bike/processed/<stem>.geojson` from `data/bike/raw/<stem>.gpx`.
-- **Strava sync** (`scripts/strava_sync.py --destination bikepacking`) writes to this tab (GPX under `data/bike/raw/`). **Match order:** (1) **H** = Strava activity URL; (2) **A** matches the Strava title (normalized) and **H** is empty (pre-planned row); (3) else **insert** a new row (full **A–J**, with **A / G / J** left blank). For (1) and (2), only **B–F** and **H–I** are updated so existing name / project / journal cells are preserved.
+- **Manual source sync** (`scripts/strava_sync.py --source strava|komoot --activity-ref ... --destination bikepacking`) writes to this tab (GPX under `data/bike/raw/`). **Match order:** (1) **H** = activity URL (Strava or Komoot); (2) **A** matches the activity title (normalized) and **H** is empty (pre-planned row); (3) else **insert** a new row (full **A–J**, with **A / G / J** left blank). For (1) and (2), only **B–F** and **H–I** are updated so existing name / project / journal cells are preserved.
 
 ## Related
 

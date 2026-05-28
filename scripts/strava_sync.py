@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import gpxpy
 import requests
@@ -24,6 +25,8 @@ STRAVA_EXPORT_GPX_URL = "https://www.strava.com/api/v3/activities/{activity_id}/
 STRAVA_STREAMS_URL = "https://www.strava.com/api/v3/activities/{activity_id}/streams"
 STRAVA_PHOTOS_URL = "https://www.strava.com/api/v3/activities/{activity_id}/photos"
 NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
+KOMOOT_TOUR_GPX_URL = "https://www.komoot.com/api/v007/tours/{tour_id}.gpx"
+KOMOOT_TOUR_JSON_URL = "https://www.komoot.com/api/v007/tours/{tour_id}"
 
 STATE_PATH = Path("data/strava_last_sync.json")
 SUMMITS_RAW_DIR = Path("data/raw")
@@ -63,6 +66,23 @@ class StravaActivity:
     season: str
     start_date_epoch: int
     status: str
+
+
+@dataclass
+class ExternalActivity:
+    source: str
+    external_id: str
+    name: str
+    type: str
+    type_source_field: str
+    type_source_value: str
+    distance_km: str
+    duration_h: str
+    elevation_gain_m: str
+    season: str
+    start_date_epoch: int
+    status: str
+    activity_url: str
 
 
 def _required_env(name: str) -> str:
@@ -393,6 +413,16 @@ def find_matching_summit_row(values: List[List[str]], summit_name: str) -> Optio
     return None
 
 
+def find_matching_summit_row_by_activity_url(values: List[List[str]], activity_url: str) -> Optional[int]:
+    target = (activity_url or "").strip()
+    if not target:
+        return None
+    for row_idx, row in enumerate(values, start=1):
+        if _row_cell(row, 15) == target:
+            return row_idx
+    return None
+
+
 def find_insert_row_below_closest_coordinate(
     values: List[List[str]], start_lat: Optional[float], start_lon: Optional[float]
 ) -> Optional[int]:
@@ -717,6 +747,107 @@ def parse_destination(raw: Optional[str]) -> str:
     return ""
 
 
+def parse_source(raw: Optional[str]) -> str:
+    v = (raw or "").strip().lower()
+    if v in ("", "strava"):
+        return "strava"
+    if v == "komoot":
+        return "komoot"
+    raise RuntimeError('ERROR: source must be either "strava" or "komoot"')
+
+
+def extract_komoot_tour_id(activity_ref: str) -> str:
+    ref = (activity_ref or "").strip()
+    if not ref:
+        raise RuntimeError("ERROR: Missing Komoot activity reference (expected URL).")
+    parsed = urlparse(ref)
+    host = (parsed.netloc or "").lower()
+    if "komoot." not in host:
+        raise RuntimeError(f'ERROR: Not a Komoot URL: "{activity_ref}"')
+    path = parsed.path or ""
+    patterns = [
+        r"/tour/(\d+)",
+        r"/smarttour/e(\d+)",
+        r"/smarttour/(\d+)",
+    ]
+    for pat in patterns:
+        m = re.search(pat, path)
+        if m:
+            return m.group(1)
+    raise RuntimeError(f'ERROR: Could not extract Komoot tour id from URL: "{activity_ref}"')
+
+
+def _normalize_komoot_sport_type(raw: str) -> str:
+    v = _normalize_activity_type(raw)
+    mapping = {
+        "hike": "Hike",
+        "mountaineering": "Hike",
+        "touringbicycle": "Ride",
+        "racingbicycle": "Ride",
+        "mtb": "MountainBikeRide",
+        "ebike": "EBikeRide",
+        "gravelbike": "GravelRide",
+        "running": "TrailRun",
+        "trailrunning": "TrailRun",
+    }
+    return mapping.get(v, "Workout")
+
+
+def fetch_komoot_tour_json(tour_id: str) -> dict:
+    url = KOMOOT_TOUR_JSON_URL.format(tour_id=tour_id)
+    response = requests.get(url, timeout=30)
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"Unexpected Komoot tour payload for id={tour_id}")
+    return payload
+
+
+def download_komoot_gpx(tour_id: str) -> bytes:
+    url = KOMOOT_TOUR_GPX_URL.format(tour_id=tour_id)
+    response = requests.get(url, timeout=60)
+    response.raise_for_status()
+    return response.content
+
+
+def komoot_tour_to_activity_model(payload: dict, activity_url: str) -> ExternalActivity:
+    tour_id = str(payload.get("id") or "").strip()
+    name = str(payload.get("name") or "").strip() or f"Komoot Tour {tour_id or 'unknown'}"
+    sport_raw = str(payload.get("sport") or "").strip()
+    activity_type = _normalize_komoot_sport_type(sport_raw)
+
+    distance_m = float(payload.get("distance") or 0)
+    duration_s = float(payload.get("duration") or payload.get("time_in_motion") or 0)
+    elev_m = float(payload.get("elevation_up") or 0)
+
+    season = ""
+    start_epoch = 0
+    date_raw = str(payload.get("date") or "").strip()
+    if date_raw:
+        try:
+            start_dt = datetime.fromisoformat(date_raw.replace("Z", "+00:00"))
+            start_epoch = int(start_dt.timestamp())
+            season = season_from_month(start_dt.month)
+        except ValueError:
+            pass
+
+    return ExternalActivity(
+        source="komoot",
+        external_id=tour_id or "unknown",
+        name=name,
+        type=activity_type,
+        type_source_field="sport",
+        type_source_value=sport_raw,
+        distance_km=_format_decimal(distance_m / 1000.0, 2),
+        duration_h=_format_decimal(duration_s / 3600.0, 2),
+        elevation_gain_m=_format_decimal(elev_m, 0),
+        season=season,
+        start_date_epoch=start_epoch,
+        status="completed",
+        activity_url=activity_url,
+    )
+
+
 def is_strava_bike_activity(activity_type: str) -> bool:
     return (activity_type or "").strip() in BIKE_TYPES
 
@@ -796,8 +927,9 @@ def upsert_bikepacking_activity_to_sheet(
     elevation_gain_m: str,
     gpx_file_value: str,
     activity_url: str,
-    access_token: str,
-    activity_id: int,
+    access_token: Optional[str] = None,
+    activity_id: Optional[int] = None,
+    photo_urls_value: Optional[str] = None,
 ) -> Dict[str, int]:
     """
     Append or update Bikepacking tab row. No OSM.
@@ -807,17 +939,20 @@ def upsert_bikepacking_activity_to_sheet(
 
     Updates (1–2) write B–F and H–I only; new rows use insert_new_row_at with A/G/J blank.
     """
-    photo_urls_value: Optional[str] = None
-    try:
-        urls = fetch_activity_photo_urls(access_token, activity_id)
-        photo_urls_value = "|".join(urls) if urls else "none"
-    except requests.RequestException as e:
-        print(
-            f"WARNING: Could not fetch photos for activity {activity_id}: {e}. "
-            "Writing 'none' to photo column."
-        )
-        photo_urls_value = "none"
-    time.sleep(1)
+    if photo_urls_value is None:
+        if access_token and activity_id is not None:
+            try:
+                urls = fetch_activity_photo_urls(access_token, activity_id)
+                photo_urls_value = "|".join(urls) if urls else "none"
+            except requests.RequestException as e:
+                print(
+                    f"WARNING: Could not fetch photos for activity {activity_id}: {e}. "
+                    "Writing 'none' to photo column."
+                )
+                photo_urls_value = "none"
+            time.sleep(1)
+        else:
+            photo_urls_value = "none"
 
     range_name = f"{sheet_name}!{BIKE_SHEET_RANGE}"
     values_resp = (
@@ -917,6 +1052,7 @@ def upsert_activity_summits_to_sheet(
     activity_url: str,
     start_lat: Optional[float],
     start_lon: Optional[float],
+    activity_source: str = "strava",
     access_token: Optional[str] = None,
     activity_id: Optional[int] = None,
     photo_urls_value: Optional[str] = None,
@@ -950,7 +1086,13 @@ def upsert_activity_summits_to_sheet(
 
     for summit_name in summit_names:
         ele_m, osm_lat, osm_lon = fetch_peak_from_nominatim(summit_name, start_lat=start_lat, start_lon=start_lon)
-        match_row_1 = find_matching_summit_row(values, summit_name)
+        matched_by_url = False
+        match_row_1 = None
+        if activity_source == "komoot":
+            match_row_1 = find_matching_summit_row_by_activity_url(values, activity_url)
+            matched_by_url = match_row_1 is not None
+        if match_row_1 is None:
+            match_row_1 = find_matching_summit_row(values, summit_name)
         if match_row_1 is not None:
             existing_row = values[match_row_1 - 1]
             update_existing_row_auto_fields(
@@ -995,15 +1137,21 @@ def upsert_activity_summits_to_sheet(
             if not _row_cell(row, COL_S_IDX):
                 row[COL_S_IDX] = photo_urls_value  # S
             matched += 1
-            print(
-                f"MATCHED summit '{summit_name}' -> row {match_row_1}. "
-                f"Updated H and K-N with GPX '{gpx_file_value}' and P when empty."
-            )
+            if matched_by_url:
+                print(
+                    f"MATCHED summit '{summit_name}' by URL in column P -> row {match_row_1}. "
+                    f"Updated H and K-N with GPX '{gpx_file_value}' and kept P when already filled."
+                )
+            else:
+                print(
+                    f"MATCHED summit '{summit_name}' by name fallback -> row {match_row_1}. "
+                    f"Updated H and K-N with GPX '{gpx_file_value}' and P when empty."
+                )
             continue
 
         print(
             f'WARNING: No match found in sheet for summit "{summit_name}" — '
-            "row will be inserted below the closest existing coordinates"
+            "row will be inserted below the closest existing coordinates (no URL/name match)"
         )
 
         insert_row_1 = find_insert_row_below_closest_coordinate(values, start_lat, start_lon)
@@ -1053,7 +1201,7 @@ def upsert_activity_summits_to_sheet(
     return {"processed_summits": len(summit_names), "matched": matched, "created": created}
 
 
-def to_activity_model(a: dict) -> StravaActivity:
+def to_activity_model(a: dict) -> ExternalActivity:
     activity_id = int(a["id"])
     name = a.get("name", f"Strava {activity_id}")
     activity_type, type_source_field, type_source_value = detect_activity_type_fields(a)
@@ -1068,8 +1216,9 @@ def to_activity_model(a: dict) -> StravaActivity:
     else:
         start_epoch = 0
         season = ""
-    return StravaActivity(
-        activity_id=activity_id,
+    return ExternalActivity(
+        source="strava",
+        external_id=str(activity_id),
         name=name,
         type=activity_type,
         type_source_field=type_source_field,
@@ -1080,15 +1229,26 @@ def to_activity_model(a: dict) -> StravaActivity:
         season=season,
         start_date_epoch=start_epoch,
         status="completed",
+        activity_url=f"https://www.strava.com/activities/{activity_id}",
     )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Sync Strava activities to Skadi sheet/GPX.")
     parser.add_argument(
+        "--source",
+        dest="source",
+        help='Sync source: "strava" or "komoot". Also reads SOURCE env if unset.',
+    )
+    parser.add_argument(
+        "--activity-ref",
+        dest="activity_ref",
+        help="Manual activity reference: exact Strava name OR Komoot tour URL.",
+    )
+    parser.add_argument(
         "--activity-name",
         dest="activity_name",
-        help="Exact Strava activity name to sync (searches across all pages).",
+        help="Legacy alias for Strava manual mode (exact activity name).",
     )
     parser.add_argument(
         "--destination",
@@ -1099,58 +1259,89 @@ def main() -> None:
     args = parser.parse_args()
 
     dest = parse_destination(args.destination or _optional_env("DESTINATION"))
+    source = parse_source(args.source or _optional_env("SOURCE"))
 
-    client_id = _required_env("STRAVA_CLIENT_ID")
-    client_secret = _required_env("STRAVA_CLIENT_SECRET")
-    refresh_token = _required_env("STRAVA_REFRESH_TOKEN")
+    activity_ref = (args.activity_ref or _optional_env("ACTIVITY_REF")).strip()
+    manual_activity_name = (args.activity_name or _optional_env("ACTIVITY_NAME")).strip()
+    if source == "strava" and not manual_activity_name and activity_ref:
+        manual_activity_name = activity_ref
+    is_manual_mode = bool(manual_activity_name) if source == "strava" else bool(activity_ref)
+    if source == "komoot" and not activity_ref:
+        raise RuntimeError("Komoot source requires --activity-ref / ACTIVITY_REF with a Komoot URL.")
+
     spreadsheet_id = _required_env("GOOGLE_SHEETS_SPREADSHEET_ID")
     sheet_name = SHEET_TAB_SOMMETS if dest == "sommets" else SHEET_TAB_BIKEPACKING
     sa_json = _optional_env("GOOGLE_SERVICE_ACCOUNT_JSON")
-    manual_activity_name = (args.activity_name or _optional_env("ACTIVITY_NAME")).strip()
-    is_manual_mode = bool(manual_activity_name)
 
-    if dest == "bikepacking" and not is_manual_mode:
+    if source == "strava":
+        client_id = _required_env("STRAVA_CLIENT_ID")
+        client_secret = _required_env("STRAVA_CLIENT_SECRET")
+        refresh_token = _required_env("STRAVA_REFRESH_TOKEN")
+        access_token = get_strava_access_token(client_id, client_secret, refresh_token)
+    else:
+        access_token = None
+
+    if dest == "bikepacking" and source == "strava" and not is_manual_mode:
         raise RuntimeError(
             "Bikepacking destination requires manual mode: set --activity-name or ACTIVITY_NAME."
         )
 
-    access_token = get_strava_access_token(client_id, client_secret, refresh_token)
-    state_exists = STATE_PATH.exists()
-    state = load_state()
+    state_exists = source == "strava" and STATE_PATH.exists()
+    state = load_state() if source == "strava" else {"last_synced_epoch": 0, "last_synced_activity_id": 0}
     after_epoch = state["last_synced_epoch"]
     after_activity_id = state["last_synced_activity_id"]
 
-    if is_manual_mode:
-        print(f"Manual sync mode: searching exact activity name '{manual_activity_name}' across all Strava pages.")
-        matched = find_activity_by_exact_name(access_token, manual_activity_name)
-        if matched is None:
-            raise RuntimeError(f'ERROR: No Strava activity found with name "{manual_activity_name}"')
-        activities_raw = [matched]
-        # Manual mode bypasses time-window/state filtering.
+    activities: List[ExternalActivity] = []
+    gpx_bytes_by_external_id: Dict[str, bytes] = {}
+
+    if source == "strava":
+        if is_manual_mode:
+            print(f"Manual sync mode: searching exact activity name '{manual_activity_name}' across all Strava pages.")
+            matched = find_activity_by_exact_name(access_token, manual_activity_name)
+            if matched is None:
+                raise RuntimeError(f'ERROR: No Strava activity found with name "{manual_activity_name}"')
+            activities_raw = [matched]
+            after_epoch = -1
+            after_activity_id = -1
+        else:
+            # First-run bootstrap: initialize sync cursor and do NOT import historical activities.
+            if (not state_exists) or (after_epoch == 0 and after_activity_id == 0):
+                latest = fetch_most_recent_activity(access_token)
+                if latest is None:
+                    bootstrap_epoch = int(datetime.now(timezone.utc).timestamp())
+                    bootstrap_activity_id = 0
+                else:
+                    bootstrap = to_activity_model(latest)
+                    bootstrap_epoch = bootstrap.start_date_epoch
+                    bootstrap_activity_id = int(bootstrap.external_id)
+                save_state(last_epoch=bootstrap_epoch, last_activity_id=bootstrap_activity_id)
+                print(
+                    "Initialized Strava sync state on first run; no activities imported. "
+                    f"Cursor set to epoch={bootstrap_epoch}, activity_id={bootstrap_activity_id}."
+                )
+                return
+
+            activities_raw = fetch_new_activities(access_token, after_epoch)
+            if not activities_raw:
+                print("No new Strava activities to sync.")
+                return
+
+        activities = [to_activity_model(raw) for raw in activities_raw]
+    else:
+        tour_id = extract_komoot_tour_id(activity_ref)
+        print(f"Komoot manual sync mode: fetching tour id={tour_id} from URL '{activity_ref}'.")
+        try:
+            komoot_payload = fetch_komoot_tour_json(tour_id)
+            gpx_bytes_by_external_id[tour_id] = download_komoot_gpx(tour_id)
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else "unknown"
+            raise RuntimeError(
+                f"ERROR: Could not fetch Komoot tour '{tour_id}' (HTTP {status}). "
+                "Check that the tour URL is valid and publicly accessible."
+            ) from exc
+        activities = [komoot_tour_to_activity_model(komoot_payload, activity_ref)]
         after_epoch = -1
         after_activity_id = -1
-    else:
-        # First-run bootstrap: initialize sync cursor and do NOT import historical activities.
-        if (not state_exists) or (after_epoch == 0 and after_activity_id == 0):
-            latest = fetch_most_recent_activity(access_token)
-            if latest is None:
-                bootstrap_epoch = int(datetime.now(timezone.utc).timestamp())
-                bootstrap_activity_id = 0
-            else:
-                bootstrap = to_activity_model(latest)
-                bootstrap_epoch = bootstrap.start_date_epoch
-                bootstrap_activity_id = bootstrap.activity_id
-            save_state(last_epoch=bootstrap_epoch, last_activity_id=bootstrap_activity_id)
-            print(
-                "Initialized Strava sync state on first run; no activities imported. "
-                f"Cursor set to epoch={bootstrap_epoch}, activity_id={bootstrap_activity_id}."
-            )
-            return
-
-        activities_raw = fetch_new_activities(access_token, after_epoch)
-        if not activities_raw:
-            print("No new Strava activities to sync.")
-            return
 
     sheets_service = build_sheets_service(sa_json)
     sheet_id = get_sheet_id(sheets_service, spreadsheet_id=spreadsheet_id, sheet_name=sheet_name)
@@ -1163,35 +1354,37 @@ def main() -> None:
     sheet_created_rows = 0
     sheet_processed_summits = 0
 
-    for raw in activities_raw:
-        activity = to_activity_model(raw)
+    for activity in activities:
+        activity_id_int = int(activity.external_id) if str(activity.external_id).isdigit() else None
         print(
-            f"Activity type detection id={activity.activity_id}: "
+            f"Activity type detection id={activity.external_id}: "
             f"field={activity.type_source_field}, value='{activity.type_source_value}', "
             f"canonical='{activity.type}'"
         )
         if activity.start_date_epoch < after_epoch:
             continue
-        if activity.start_date_epoch == after_epoch and activity.activity_id <= after_activity_id:
+        if activity.start_date_epoch == after_epoch and activity_id_int is not None and activity_id_int <= after_activity_id:
             continue
         if dest == "sommets":
-            if (not is_manual_mode) and _normalize_activity_type(activity.type) != "hike":
+            if source == "strava" and (not is_manual_mode) and _normalize_activity_type(activity.type) != "hike":
                 print(
-                    f"Skipping activity id={activity.activity_id} "
+                    f"Skipping activity id={activity.external_id} "
                     f"name='{activity.name}' type='{activity.type}' (only Hike is synced)."
                 )
                 last_epoch = max(last_epoch, activity.start_date_epoch)
-                last_activity_id = max(last_activity_id, activity.activity_id)
+                if activity_id_int is not None:
+                    last_activity_id = max(last_activity_id, activity_id_int)
                 continue
         else:
-            if not is_strava_bike_activity(activity.type):
+            if source == "strava" and not is_strava_bike_activity(activity.type):
                 print(
-                    f"Skipping activity id={activity.activity_id} "
+                    f"Skipping activity id={activity.external_id} "
                     f"name='{activity.name}' type='{activity.type}' "
                     "(not a supported bike activity type)."
                 )
                 last_epoch = max(last_epoch, activity.start_date_epoch)
-                last_activity_id = max(last_activity_id, activity.activity_id)
+                if activity_id_int is not None:
+                    last_activity_id = max(last_activity_id, activity_id_int)
                 continue
 
         out_dir = SUMMITS_RAW_DIR if dest == "sommets" else BIKE_RAW_DIR
@@ -1199,31 +1392,38 @@ def main() -> None:
 
         gpx_filename = activity_title_to_gpx_filename(activity.name)
         gpx_file_value = gpx_filename
-        activity_url = f"https://www.strava.com/activities/{activity.activity_id}"
+        activity_url = activity.activity_url
         gpx_rel_path = out_dir / gpx_filename
-        try:
-            gpx_bytes = download_gpx_with_fallback(access_token, activity.activity_id)
-        except requests.HTTPError as exc:
-            status = exc.response.status_code if exc.response is not None else None
-            if status in {401, 403, 404}:
+        if source == "strava":
+            try:
+                gpx_bytes = download_gpx_with_fallback(access_token, int(activity.external_id))
+            except requests.HTTPError as exc:
+                status = exc.response.status_code if exc.response is not None else None
+                if status in {401, 403, 404}:
+                    print(
+                        f"Skipping activity id={activity.external_id} name='{activity.name}': "
+                        f"GPX unavailable (HTTP {status}) even after fallback."
+                    )
+                    if not is_manual_mode:
+                        last_epoch = max(last_epoch, activity.start_date_epoch)
+                        if activity_id_int is not None:
+                            last_activity_id = max(last_activity_id, activity_id_int)
+                    continue
+                raise
+            except RuntimeError as exc:
                 print(
-                    f"Skipping activity id={activity.activity_id} name='{activity.name}': "
-                    f"GPX unavailable (HTTP {status}) even after fallback."
+                    f"Skipping activity id={activity.external_id} name='{activity.name}': "
+                    f"{exc}"
                 )
                 if not is_manual_mode:
                     last_epoch = max(last_epoch, activity.start_date_epoch)
-                    last_activity_id = max(last_activity_id, activity.activity_id)
+                    if activity_id_int is not None:
+                        last_activity_id = max(last_activity_id, activity_id_int)
                 continue
-            raise
-        except RuntimeError as exc:
-            print(
-                f"Skipping activity id={activity.activity_id} name='{activity.name}': "
-                f"{exc}"
-            )
-            if not is_manual_mode:
-                last_epoch = max(last_epoch, activity.start_date_epoch)
-                last_activity_id = max(last_activity_id, activity.activity_id)
-            continue
+        else:
+            gpx_bytes = gpx_bytes_by_external_id.get(activity.external_id, b"")
+            if not gpx_bytes:
+                raise RuntimeError(f"ERROR: Missing GPX bytes in memory for Komoot tour id={activity.external_id}")
         gpx_rel_path.write_bytes(gpx_bytes)
 
         if dest == "sommets":
@@ -1243,8 +1443,10 @@ def main() -> None:
                 activity_url=activity_url,
                 start_lat=lat,
                 start_lon=lon,
-                access_token=access_token,
-                activity_id=activity.activity_id,
+                activity_source=source,
+                access_token=access_token if source == "strava" else None,
+                activity_id=int(activity.external_id) if source == "strava" else None,
+                photo_urls_value="none" if source == "komoot" else None,
             )
         else:
             upsert_result = upsert_bikepacking_activity_to_sheet(
@@ -1259,8 +1461,9 @@ def main() -> None:
                 elevation_gain_m=activity.elevation_gain_m,
                 gpx_file_value=gpx_file_value,
                 activity_url=activity_url,
-                access_token=access_token,
-                activity_id=activity.activity_id,
+                access_token=access_token if source == "strava" else None,
+                activity_id=int(activity.external_id) if source == "strava" else None,
+                photo_urls_value="none" if source == "komoot" else None,
             )
 
         synced += 1
@@ -1270,16 +1473,17 @@ def main() -> None:
         if dest == "sommets":
             sheet_processed_summits += int(upsert_result.get("processed_summits", 0))
         last_epoch = max(last_epoch, activity.start_date_epoch)
-        last_activity_id = max(last_activity_id, activity.activity_id)
+        if activity_id_int is not None:
+            last_activity_id = max(last_activity_id, activity_id_int)
         if dest == "sommets":
             print(
-                f"Synced activity id={activity.activity_id} name='{activity.name}' "
+                f"Synced activity id={activity.external_id} name='{activity.name}' "
                 f"type={activity.type} gpx='{gpx_rel_path}' "
                 f"processed_summits={upsert_result['processed_summits']}"
             )
         else:
             print(
-                f"Synced activity id={activity.activity_id} name='{activity.name}' "
+                f"Synced activity id={activity.external_id} name='{activity.name}' "
                 f"type={activity.type} gpx='{gpx_rel_path}' "
                 f"bikepacking matched={upsert_result['matched']} created={upsert_result['created']}"
             )
@@ -1289,7 +1493,7 @@ def main() -> None:
         or last_activity_id != state["last_synced_activity_id"]
     )
 
-    if synced:
+    if synced and source == "strava":
         save_state(last_epoch=last_epoch, last_activity_id=last_activity_id)
         summary = ", ".join(synced_names[:3])
         if len(synced_names) > 3:
@@ -1306,6 +1510,11 @@ def main() -> None:
                 "Sheet write summary (bikepacking): "
                 f"matched_rows={sheet_matched_rows}, created_rows={sheet_created_rows}."
             )
+    elif synced:
+        summary = ", ".join(synced_names[:3])
+        if len(synced_names) > 3:
+            summary += f" (+{len(synced_names) - 3} more)"
+        print(f"Synced {synced} activities from {source}. Summary: {summary}")
     elif state_advanced:
         save_state(last_epoch=last_epoch, last_activity_id=last_activity_id)
         print("No activities synced, but sync cursor advanced to avoid reprocessing.")

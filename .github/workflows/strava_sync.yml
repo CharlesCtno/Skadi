@@ -3,8 +3,15 @@ name: Strava Sync (Manual)
 on:
   workflow_dispatch:
     inputs:
-      activity_name:
-        description: Exact Strava activity name to sync
+      source:
+        description: Activity source provider
+        required: true
+        type: choice
+        options:
+          - strava
+          - komoot
+      activity_ref:
+        description: Exact Strava activity name or Komoot activity URL
         required: true
         type: string
       destination:
@@ -48,16 +55,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Strava sync by activity name
+      - name: Run activity sync by source/ref
         env:
           STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
           STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
           STRAVA_REFRESH_TOKEN: ${{ secrets.STRAVA_REFRESH_TOKEN }}
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
-          ACTIVITY_NAME: ${{ inputs.activity_name }}
+          SOURCE: ${{ inputs.source }}
+          ACTIVITY_REF: ${{ inputs.activity_ref }}
           DESTINATION: ${{ inputs.destination }}
         run: |
-          python scripts/strava_sync.py --activity-name "${ACTIVITY_NAME}" --destination "${DESTINATION}"
+          python scripts/strava_sync.py --source "${SOURCE}" --activity-ref "${ACTIVITY_REF}" --destination "${DESTINATION}"
 
       - name: Convert only new GPX to GeoJSON
         run: |
@@ -95,7 +103,8 @@ jobs:
 
       - name: Commit and push processed/state
         env:
-          ACTIVITY_NAME: ${{ inputs.activity_name }}
+          SOURCE: ${{ inputs.source }}
+          ACTIVITY_REF: ${{ inputs.activity_ref }}
           DESTINATION: ${{ inputs.destination }}
         run: |
           git config user.name "github-actions[bot]"
@@ -105,7 +114,7 @@ jobs:
             echo "No changes to commit."
             exit 0
           fi
-          git commit -m "[strava-sync] Add GPX for activity ${ACTIVITY_NAME} (${DESTINATION})"
+          git commit -m "[activity-sync] Add GPX for ${SOURCE}:${ACTIVITY_REF} (${DESTINATION})"
           # Another workflow/user may have pushed to main while this job was running.
           # Rebase onto latest origin/main, then push.
           git pull --rebase origin main
