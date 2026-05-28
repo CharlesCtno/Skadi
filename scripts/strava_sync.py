@@ -28,7 +28,6 @@ NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 KOMOOT_TOUR_GPX_URL = "https://www.komoot.com/api/v007/tours/{tour_id}.gpx"
 KOMOOT_TOUR_JSON_URL = "https://www.komoot.com/api/v007/tours/{tour_id}"
 KOMOOT_TOUR_COORDINATES_URL = "https://www.komoot.com/api/v007/tours/{tour_id}/coordinates"
-DEBUG_LOG_PATH = Path(".cursor/debug-2e1064.log")
 
 STATE_PATH = Path("data/strava_last_sync.json")
 SUMMITS_RAW_DIR = Path("data/raw")
@@ -415,14 +414,50 @@ def find_matching_summit_row(values: List[List[str]], summit_name: str) -> Optio
     return None
 
 
-def find_matching_summit_row_by_activity_url(values: List[List[str]], activity_url: str) -> Optional[int]:
-    target = (activity_url or "").strip()
-    if not target:
+def is_planned_summit_status(status_cell: str) -> bool:
+    status = _normalize(status_cell)
+    return status in ("to do", "à faire", "a faire", "à gravir", "a gravir")
+
+
+def _parse_komoot_tour_id(url_or_ref: str) -> Optional[str]:
+    ref = (url_or_ref or "").strip()
+    if not ref:
         return None
-    for row_idx, row in enumerate(values, start=1):
-        if _row_cell(row, 15) == target:
-            return row_idx
+    parsed = urlparse(ref)
+    host = (parsed.netloc or "").lower()
+    if host and "komoot." not in host:
+        return None
+    path = parsed.path or ""
+    patterns = [
+        r"/tour/(\d+)",
+        r"/smarttour/e(\d+)",
+        r"/smarttour/(\d+)",
+    ]
+    for pat in patterns:
+        m = re.search(pat, path)
+        if m:
+            return m.group(1)
     return None
+
+
+def find_all_summit_rows_by_activity_url(values: List[List[str]], activity_url: str) -> List[int]:
+    target_tour_id = _parse_komoot_tour_id(activity_url)
+    if not target_tour_id:
+        return []
+    matched_rows: List[int] = []
+    for row_idx, row in enumerate(values, start=1):
+        cell_url = _row_cell(row, 15)
+        if not cell_url:
+            continue
+        cell_tour_id = _parse_komoot_tour_id(cell_url)
+        if cell_tour_id == target_tour_id:
+            matched_rows.append(row_idx)
+    return matched_rows
+
+
+def find_matching_summit_row_by_activity_url(values: List[List[str]], activity_url: str) -> Optional[int]:
+    rows = find_all_summit_rows_by_activity_url(values, activity_url)
+    return rows[0] if rows else None
 
 
 def find_insert_row_below_closest_coordinate(
@@ -653,8 +688,8 @@ def update_existing_row_auto_fields(
         {"range": f"{sheet_name}!H{row_1}", "values": [[season]]},
         {"range": f"{sheet_name}!K{row_1}:N{row_1}", "values": [[distance_km, duration_h, elevation_gain_m, gpx_file]]},
     ]
-    # If status is explicitly "to do", clear it when this summit gets matched to a completed activity.
-    if _row_cell(existing_row, 2).lower() == "to do":
+    # Clear planned status when this summit gets matched to a completed activity.
+    if is_planned_summit_status(_row_cell(existing_row, 2)):
         data.append({"range": f"{sheet_name}!C{row_1}", "values": [[""]]})
 
     # Do not overwrite E/F/G if already filled.
@@ -762,40 +797,12 @@ def extract_komoot_tour_id(activity_ref: str) -> str:
     ref = (activity_ref or "").strip()
     if not ref:
         raise RuntimeError("ERROR: Missing Komoot activity reference (expected URL).")
-    parsed = urlparse(ref)
-    host = (parsed.netloc or "").lower()
-    if "komoot." not in host:
-        raise RuntimeError(f'ERROR: Not a Komoot URL: "{activity_ref}"')
-    path = parsed.path or ""
-    patterns = [
-        r"/tour/(\d+)",
-        r"/smarttour/e(\d+)",
-        r"/smarttour/(\d+)",
-    ]
-    for pat in patterns:
-        m = re.search(pat, path)
-        if m:
-            return m.group(1)
-    raise RuntimeError(f'ERROR: Could not extract Komoot tour id from URL: "{activity_ref}"')
-
-
-def _debug_log(hypothesis_id: str, location: str, message: str, data: dict) -> None:
-    # region agent log
-    try:
-        payload = {
-            "sessionId": "2e1064",
-            "hypothesisId": hypothesis_id,
-            "location": location,
-            "message": message,
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        DEBUG_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
-    except OSError:
-        pass
-    # endregion
+    tour_id = _parse_komoot_tour_id(ref)
+    if not tour_id:
+        if "komoot." not in urlparse(ref).netloc.lower():
+            raise RuntimeError(f'ERROR: Not a Komoot URL: "{activity_ref}"')
+        raise RuntimeError(f'ERROR: Could not extract Komoot tour id from URL: "{activity_ref}"')
+    return tour_id
 
 
 def extract_komoot_share_token(activity_ref: str) -> Optional[str]:
@@ -828,12 +835,6 @@ def fetch_komoot_tour_json(tour_id: str, share_token: Optional[str] = None) -> d
     url = KOMOOT_TOUR_JSON_URL.format(tour_id=tour_id)
     params = {"share_token": share_token} if share_token else None
     response = requests.get(url, params=params, timeout=30)
-    _debug_log(
-        "B",
-        "strava_sync.py:fetch_komoot_tour_json",
-        "komoot tour json response",
-        {"tour_id": tour_id, "status": response.status_code, "has_share_token": bool(share_token)},
-    )
     response.raise_for_status()
     payload = response.json()
     if not isinstance(payload, dict):
@@ -845,12 +846,6 @@ def fetch_komoot_coordinates(tour_id: str, share_token: Optional[str] = None) ->
     url = KOMOOT_TOUR_COORDINATES_URL.format(tour_id=tour_id)
     params = {"share_token": share_token} if share_token else None
     response = requests.get(url, params=params, timeout=60)
-    _debug_log(
-        "E",
-        "strava_sync.py:fetch_komoot_coordinates",
-        "komoot coordinates response",
-        {"tour_id": tour_id, "status": response.status_code},
-    )
     response.raise_for_status()
     payload = response.json()
     items = payload.get("items") if isinstance(payload, dict) else None
@@ -919,18 +914,6 @@ def download_komoot_gpx(
     url = KOMOOT_TOUR_GPX_URL.format(tour_id=tour_id)
     params = {"share_token": share_token} if share_token else None
     response = requests.get(url, params=params, timeout=60)
-    _debug_log(
-        "C",
-        "strava_sync.py:download_komoot_gpx",
-        "komoot gpx endpoint response",
-        {
-            "tour_id": tour_id,
-            "status": response.status_code,
-            "has_share_token": bool(share_token),
-            "tour_type": (tour_payload or {}).get("type"),
-            "tour_status": (tour_payload or {}).get("status"),
-        },
-    )
     if response.status_code == 200:
         return response.content
 
@@ -947,12 +930,6 @@ def download_komoot_gpx(
             tour_name=tour_name,
             coordinate_items=coordinate_items,
             tour_date_raw=tour_date_raw,
-        )
-        _debug_log(
-            "E",
-            "strava_sync.py:download_komoot_gpx",
-            "built gpx from coordinates fallback",
-            {"tour_id": tour_id, "point_count": len(coordinate_items), "gpx_bytes": len(gpx_bytes)},
         )
         return gpx_bytes
 
@@ -1187,6 +1164,88 @@ def split_summit_names(activity_title: str) -> List[str]:
     return names or [activity_title.strip()]
 
 
+def _sync_existing_summit_row(
+    sheets_service,
+    spreadsheet_id: str,
+    sheet_name: str,
+    values: List[List[str]],
+    match_row_1: int,
+    summit_name: str,
+    ele_m: Optional[str],
+    osm_lat: Optional[str],
+    osm_lon: Optional[str],
+    strava_activity_type: str,
+    season: str,
+    distance_km: str,
+    duration_h: str,
+    elevation_gain_m: str,
+    gpx_file_value: str,
+    activity_url: str,
+    photo_urls_value: str,
+    match_method: str,
+) -> None:
+    existing_row = values[match_row_1 - 1]
+    status_before = _row_cell(existing_row, 2)
+    had_ele = bool(_row_cell(existing_row, 4))
+    had_lat = bool(_row_cell(existing_row, 5))
+    had_lon = bool(_row_cell(existing_row, 6))
+
+    update_existing_row_auto_fields(
+        sheets_service=sheets_service,
+        spreadsheet_id=spreadsheet_id,
+        sheet_name=sheet_name,
+        row_1=match_row_1,
+        existing_row=existing_row,
+        ele_m=ele_m,
+        summit_lat=osm_lat,
+        summit_lon=osm_lon,
+        strava_activity_type=strava_activity_type,
+        season=season,
+        distance_km=distance_km,
+        duration_h=duration_h,
+        elevation_gain_m=elevation_gain_m,
+        gpx_file=gpx_file_value,
+        activity_url=activity_url,
+        photo_urls_value=photo_urls_value,
+    )
+
+    row = existing_row
+    while len(row) < 19:
+        row.append("")
+    if is_planned_summit_status(_row_cell(row, 2)):
+        row[2] = ""  # C
+    if not _row_cell(row, 4) and ele_m is not None:
+        row[4] = ele_m  # E
+    if not _row_cell(row, 5) and osm_lat is not None:
+        row[5] = osm_lat  # F
+    if not _row_cell(row, 6) and osm_lon is not None:
+        row[6] = osm_lon  # G
+    row[7] = season  # H
+    sheet_type = sheet_type_from_strava_activity_type(strava_activity_type)
+    if not _row_cell(row, 8) and sheet_type:
+        row[8] = sheet_type  # I
+    row[10] = distance_km  # K
+    row[11] = duration_h  # L
+    row[12] = elevation_gain_m  # M
+    row[13] = gpx_file_value  # N
+    if not _row_cell(row, 15) and activity_url:
+        row[15] = activity_url  # P
+    if not _row_cell(row, COL_S_IDX):
+        row[COL_S_IDX] = photo_urls_value  # S
+
+    cleared_status = is_planned_summit_status(status_before)
+    filled_osm = (
+        (not had_ele and ele_m is not None)
+        or (not had_lat and osm_lat is not None)
+        or (not had_lon and osm_lon is not None)
+    )
+    print(
+        f"MATCHED summit '{summit_name}' by {match_method} -> row {match_row_1}. "
+        f"Updated H and K-N with GPX '{gpx_file_value}'. "
+        f"status_cleared={cleared_status} osm_filled={filled_osm}."
+    )
+
+
 def upsert_activity_summits_to_sheet(
     sheets_service,
     spreadsheet_id: str,
@@ -1208,8 +1267,9 @@ def upsert_activity_summits_to_sheet(
     photo_urls_value: Optional[str] = None,
 ) -> Dict[str, int]:
     """
-    Upsert all summit names extracted from activity_title.
-    - Match by column D (case-insensitive) -> update K-N and P, S when empty.
+    Upsert summit rows for an activity.
+    - Strava: split activity_title by '&' and match each summit name on column D.
+    - Komoot: match all rows sharing the same tour URL in column P, use each row's column D for OSM.
     - If no match -> insert immediately below closest existing row with valid F/G.
     """
     if photo_urls_value is None and access_token and activity_id is not None:
@@ -1232,71 +1292,78 @@ def upsert_activity_summits_to_sheet(
 
     matched = 0
     created = 0
+
+    if activity_source == "komoot":
+        url_row_indices = find_all_summit_rows_by_activity_url(values, activity_url)
+        if url_row_indices:
+            for match_row_1 in url_row_indices:
+                existing_row = values[match_row_1 - 1]
+                summit_name = _row_cell(existing_row, 3)
+                if not summit_name.strip():
+                    print(
+                        f"WARNING: Row {match_row_1} matched Komoot URL but column D is empty — "
+                        "updating activity stats without OSM lookup."
+                    )
+                    ele_m, osm_lat, osm_lon = None, None, None
+                else:
+                    ele_m, osm_lat, osm_lon = fetch_peak_from_nominatim(
+                        summit_name, start_lat=start_lat, start_lon=start_lon
+                    )
+                _sync_existing_summit_row(
+                    sheets_service=sheets_service,
+                    spreadsheet_id=spreadsheet_id,
+                    sheet_name=sheet_name,
+                    values=values,
+                    match_row_1=match_row_1,
+                    summit_name=summit_name or f"row-{match_row_1}",
+                    ele_m=ele_m,
+                    osm_lat=osm_lat,
+                    osm_lon=osm_lon,
+                    strava_activity_type=strava_activity_type,
+                    season=season,
+                    distance_km=distance_km,
+                    duration_h=duration_h,
+                    elevation_gain_m=elevation_gain_m,
+                    gpx_file_value=gpx_file_value,
+                    activity_url=activity_url,
+                    photo_urls_value=photo_urls_value,
+                    match_method="url",
+                )
+                matched += 1
+            return {
+                "processed_summits": len(url_row_indices),
+                "matched": matched,
+                "created": created,
+            }
+
     summit_names = split_summit_names(activity_title)
 
     for summit_name in summit_names:
         ele_m, osm_lat, osm_lon = fetch_peak_from_nominatim(summit_name, start_lat=start_lat, start_lon=start_lon)
-        matched_by_url = False
-        match_row_1 = None
-        if activity_source == "komoot":
-            match_row_1 = find_matching_summit_row_by_activity_url(values, activity_url)
-            matched_by_url = match_row_1 is not None
-        if match_row_1 is None:
-            match_row_1 = find_matching_summit_row(values, summit_name)
+        match_row_1 = find_matching_summit_row(values, summit_name)
+        match_method = "name"
         if match_row_1 is not None:
-            existing_row = values[match_row_1 - 1]
-            update_existing_row_auto_fields(
+            _sync_existing_summit_row(
                 sheets_service=sheets_service,
                 spreadsheet_id=spreadsheet_id,
                 sheet_name=sheet_name,
-                row_1=match_row_1,
-                existing_row=existing_row,
+                values=values,
+                match_row_1=match_row_1,
+                summit_name=summit_name,
                 ele_m=ele_m,
-                summit_lat=osm_lat,
-                summit_lon=osm_lon,
+                osm_lat=osm_lat,
+                osm_lon=osm_lon,
                 strava_activity_type=strava_activity_type,
                 season=season,
                 distance_km=distance_km,
                 duration_h=duration_h,
                 elevation_gain_m=elevation_gain_m,
-                gpx_file=gpx_file_value,
+                gpx_file_value=gpx_file_value,
                 activity_url=activity_url,
                 photo_urls_value=photo_urls_value,
+                match_method=match_method,
             )
-            row = existing_row
-            while len(row) < 19:
-                row.append("")
-            if _row_cell(row, 2).lower() == "to do":
-                row[2] = ""  # C
-            if not _row_cell(row, 4) and ele_m is not None:
-                row[4] = ele_m  # E
-            if not _row_cell(row, 5) and osm_lat is not None:
-                row[5] = osm_lat  # F
-            if not _row_cell(row, 6) and osm_lon is not None:
-                row[6] = osm_lon  # G
-            row[7] = season  # H
-            sheet_type = sheet_type_from_strava_activity_type(strava_activity_type)
-            if not _row_cell(row, 8) and sheet_type:
-                row[8] = sheet_type  # I
-            row[10] = distance_km  # K
-            row[11] = duration_h  # L
-            row[12] = elevation_gain_m  # M
-            row[13] = gpx_file_value  # N
-            if not _row_cell(row, 15) and activity_url:
-                row[15] = activity_url  # P
-            if not _row_cell(row, COL_S_IDX):
-                row[COL_S_IDX] = photo_urls_value  # S
             matched += 1
-            if matched_by_url:
-                print(
-                    f"MATCHED summit '{summit_name}' by URL in column P -> row {match_row_1}. "
-                    f"Updated H and K-N with GPX '{gpx_file_value}' and kept P when already filled."
-                )
-            else:
-                print(
-                    f"MATCHED summit '{summit_name}' by name fallback -> row {match_row_1}. "
-                    f"Updated H and K-N with GPX '{gpx_file_value}' and P when empty."
-                )
             continue
 
         print(

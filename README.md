@@ -133,7 +133,7 @@ Documentation quick links:
 - `docs/ADVENTURE_MODE_TASKER_MVP.md` – Phone trigger request templates for HTTP Shortcuts / Automate
 - `docs/ADVENTURE_MODE_AUTOMATE_LOOP.md` – Automate background loop + offline buffer strategy
 - `admin/enrich.html` – Mobile admin page (session token) to enrich points with note/photo; resolves `live/` paths from repo root
-- `scripts/strava_sync.py` – Manual sync entrypoint for Strava or Komoot; `--source strava|komoot`, `--activity-ref "<exact Strava name or Komoot URL>"`, and `--destination sommets|bikepacking` select source + sheet target; pushes GPX to `data/raw/` or `data/bike/raw/`. For `source=komoot` on Sommets, matching uses column `P` URL first, then falls back to summit name in column `D`.
+- `scripts/strava_sync.py` – Manual sync entrypoint for Strava or Komoot; `--source strava|komoot`, `--activity-ref "<exact Strava name or Komoot URL>"`, and `--destination sommets|bikepacking` select source + sheet target; pushes GPX to `data/raw/` or `data/bike/raw/`. For `source=komoot` on Sommets, all rows sharing the same tour URL in column `P` are updated; OSM altitude/coordinates use each row’s summit name in column `D`, and planned status (`à gravir` / `à faire`) in column `C` is cleared.
 - `scripts/strava_backfill_photos.py` – One-time backfill of photo URLs into column S for existing activities
 - `scripts/convert_gpx.py` – Converts GPX files to GeoJSON (run automatically via GitHub Actions)
 - `scripts/adventure_live_dispatch.py` – Applies live trip actions (`start_trip`, `start_live_day`, `add_point`, `enrich_point`, `stop_live_day`, `stop_trip`)
