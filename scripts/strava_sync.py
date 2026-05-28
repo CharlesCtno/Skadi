@@ -6,7 +6,7 @@ import time
 import argparse
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
@@ -27,6 +27,8 @@ STRAVA_PHOTOS_URL = "https://www.strava.com/api/v3/activities/{activity_id}/phot
 NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 KOMOOT_TOUR_GPX_URL = "https://www.komoot.com/api/v007/tours/{tour_id}.gpx"
 KOMOOT_TOUR_JSON_URL = "https://www.komoot.com/api/v007/tours/{tour_id}"
+KOMOOT_TOUR_COORDINATES_URL = "https://www.komoot.com/api/v007/tours/{tour_id}/coordinates"
+DEBUG_LOG_PATH = Path(".cursor/debug-2e1064.log")
 
 STATE_PATH = Path("data/strava_last_sync.json")
 SUMMITS_RAW_DIR = Path("data/raw")
@@ -777,6 +779,25 @@ def extract_komoot_tour_id(activity_ref: str) -> str:
     raise RuntimeError(f'ERROR: Could not extract Komoot tour id from URL: "{activity_ref}"')
 
 
+def _debug_log(hypothesis_id: str, location: str, message: str, data: dict) -> None:
+    # region agent log
+    try:
+        payload = {
+            "sessionId": "2e1064",
+            "hypothesisId": hypothesis_id,
+            "location": location,
+            "message": message,
+            "data": data,
+            "timestamp": int(time.time() * 1000),
+        }
+        DEBUG_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
+    except OSError:
+        pass
+    # endregion
+
+
 def extract_komoot_share_token(activity_ref: str) -> Optional[str]:
     ref = (activity_ref or "").strip()
     if not ref:
@@ -807,6 +828,12 @@ def fetch_komoot_tour_json(tour_id: str, share_token: Optional[str] = None) -> d
     url = KOMOOT_TOUR_JSON_URL.format(tour_id=tour_id)
     params = {"share_token": share_token} if share_token else None
     response = requests.get(url, params=params, timeout=30)
+    _debug_log(
+        "B",
+        "strava_sync.py:fetch_komoot_tour_json",
+        "komoot tour json response",
+        {"tour_id": tour_id, "status": response.status_code, "has_share_token": bool(share_token)},
+    )
     response.raise_for_status()
     payload = response.json()
     if not isinstance(payload, dict):
@@ -814,10 +841,121 @@ def fetch_komoot_tour_json(tour_id: str, share_token: Optional[str] = None) -> d
     return payload
 
 
-def download_komoot_gpx(tour_id: str, share_token: Optional[str] = None) -> bytes:
+def fetch_komoot_coordinates(tour_id: str, share_token: Optional[str] = None) -> List[dict]:
+    url = KOMOOT_TOUR_COORDINATES_URL.format(tour_id=tour_id)
+    params = {"share_token": share_token} if share_token else None
+    response = requests.get(url, params=params, timeout=60)
+    _debug_log(
+        "E",
+        "strava_sync.py:fetch_komoot_coordinates",
+        "komoot coordinates response",
+        {"tour_id": tour_id, "status": response.status_code},
+    )
+    response.raise_for_status()
+    payload = response.json()
+    items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(items, list) or not items:
+        raise RuntimeError(f"No coordinate items available for Komoot tour {tour_id}")
+    return items
+
+
+def _build_gpx_from_komoot_coordinates(
+    tour_id: str,
+    tour_name: str,
+    coordinate_items: List[dict],
+    tour_date_raw: str = "",
+) -> bytes:
+    base_dt: Optional[datetime] = None
+    if tour_date_raw:
+        try:
+            base_dt = datetime.fromisoformat(tour_date_raw.replace("Z", "+00:00"))
+        except ValueError:
+            base_dt = None
+
+    gpx = ET.Element(
+        "gpx",
+        attrib={
+            "version": "1.1",
+            "creator": "Skadi Komoot Sync",
+            "xmlns": "http://www.topografix.com/GPX/1/1",
+        },
+    )
+    trk = ET.SubElement(gpx, "trk")
+    name = ET.SubElement(trk, "name")
+    name.text = tour_name or str(tour_id)
+    trkseg = ET.SubElement(trk, "trkseg")
+
+    for item in coordinate_items:
+        if not isinstance(item, dict):
+            continue
+        lat = item.get("lat")
+        lng = item.get("lng")
+        if lat is None or lng is None:
+            continue
+        trkpt = ET.SubElement(trkseg, "trkpt", attrib={"lat": str(lat), "lon": str(lng)})
+        alt = item.get("alt")
+        if alt is not None:
+            ele = ET.SubElement(trkpt, "ele")
+            ele.text = str(alt)
+        if base_dt is not None and item.get("t") is not None:
+            try:
+                offset_s = float(item.get("t"))
+                point_dt = base_dt + timedelta(seconds=offset_s)
+                t = ET.SubElement(trkpt, "time")
+                t.text = point_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            except (TypeError, ValueError):
+                pass
+
+    if not list(trkseg):
+        raise RuntimeError(f"Could not build GPX track from Komoot coordinates for tour {tour_id}")
+    return ET.tostring(gpx, encoding="utf-8", xml_declaration=True)
+
+
+def download_komoot_gpx(
+    tour_id: str,
+    share_token: Optional[str] = None,
+    tour_payload: Optional[dict] = None,
+) -> bytes:
     url = KOMOOT_TOUR_GPX_URL.format(tour_id=tour_id)
     params = {"share_token": share_token} if share_token else None
     response = requests.get(url, params=params, timeout=60)
+    _debug_log(
+        "C",
+        "strava_sync.py:download_komoot_gpx",
+        "komoot gpx endpoint response",
+        {
+            "tour_id": tour_id,
+            "status": response.status_code,
+            "has_share_token": bool(share_token),
+            "tour_type": (tour_payload or {}).get("type"),
+            "tour_status": (tour_payload or {}).get("status"),
+        },
+    )
+    if response.status_code == 200:
+        return response.content
+
+    if response.status_code == 403:
+        print(
+            f"Komoot GPX export blocked for tour {tour_id} (HTTP 403). "
+            "Falling back to coordinates endpoint."
+        )
+        coordinate_items = fetch_komoot_coordinates(tour_id, share_token=share_token)
+        tour_name = str((tour_payload or {}).get("name") or tour_id)
+        tour_date_raw = str((tour_payload or {}).get("date") or "")
+        gpx_bytes = _build_gpx_from_komoot_coordinates(
+            tour_id=tour_id,
+            tour_name=tour_name,
+            coordinate_items=coordinate_items,
+            tour_date_raw=tour_date_raw,
+        )
+        _debug_log(
+            "E",
+            "strava_sync.py:download_komoot_gpx",
+            "built gpx from coordinates fallback",
+            {"tour_id": tour_id, "point_count": len(coordinate_items), "gpx_bytes": len(gpx_bytes)},
+        )
+        return gpx_bytes
+
     response.raise_for_status()
     return response.content
 
@@ -1345,7 +1483,11 @@ def main() -> None:
         print(f"Komoot manual sync mode: fetching tour id={tour_id} from URL '{activity_ref}'.")
         try:
             komoot_payload = fetch_komoot_tour_json(tour_id, share_token=share_token)
-            gpx_bytes_by_external_id[tour_id] = download_komoot_gpx(tour_id, share_token=share_token)
+            gpx_bytes_by_external_id[tour_id] = download_komoot_gpx(
+                tour_id,
+                share_token=share_token,
+                tour_payload=komoot_payload,
+            )
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else "unknown"
             raise RuntimeError(
