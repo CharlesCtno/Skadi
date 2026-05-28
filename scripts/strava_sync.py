@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import gpxpy
 import requests
@@ -777,6 +777,16 @@ def extract_komoot_tour_id(activity_ref: str) -> str:
     raise RuntimeError(f'ERROR: Could not extract Komoot tour id from URL: "{activity_ref}"')
 
 
+def extract_komoot_share_token(activity_ref: str) -> Optional[str]:
+    ref = (activity_ref or "").strip()
+    if not ref:
+        return None
+    parsed = urlparse(ref)
+    q = parse_qs(parsed.query or "")
+    token = (q.get("share_token") or [""])[0].strip()
+    return token or None
+
+
 def _normalize_komoot_sport_type(raw: str) -> str:
     v = _normalize_activity_type(raw)
     mapping = {
@@ -793,9 +803,10 @@ def _normalize_komoot_sport_type(raw: str) -> str:
     return mapping.get(v, "Workout")
 
 
-def fetch_komoot_tour_json(tour_id: str) -> dict:
+def fetch_komoot_tour_json(tour_id: str, share_token: Optional[str] = None) -> dict:
     url = KOMOOT_TOUR_JSON_URL.format(tour_id=tour_id)
-    response = requests.get(url, timeout=30)
+    params = {"share_token": share_token} if share_token else None
+    response = requests.get(url, params=params, timeout=30)
     response.raise_for_status()
     payload = response.json()
     if not isinstance(payload, dict):
@@ -803,9 +814,10 @@ def fetch_komoot_tour_json(tour_id: str) -> dict:
     return payload
 
 
-def download_komoot_gpx(tour_id: str) -> bytes:
+def download_komoot_gpx(tour_id: str, share_token: Optional[str] = None) -> bytes:
     url = KOMOOT_TOUR_GPX_URL.format(tour_id=tour_id)
-    response = requests.get(url, timeout=60)
+    params = {"share_token": share_token} if share_token else None
+    response = requests.get(url, params=params, timeout=60)
     response.raise_for_status()
     return response.content
 
@@ -1329,15 +1341,17 @@ def main() -> None:
         activities = [to_activity_model(raw) for raw in activities_raw]
     else:
         tour_id = extract_komoot_tour_id(activity_ref)
+        share_token = extract_komoot_share_token(activity_ref)
         print(f"Komoot manual sync mode: fetching tour id={tour_id} from URL '{activity_ref}'.")
         try:
-            komoot_payload = fetch_komoot_tour_json(tour_id)
-            gpx_bytes_by_external_id[tour_id] = download_komoot_gpx(tour_id)
+            komoot_payload = fetch_komoot_tour_json(tour_id, share_token=share_token)
+            gpx_bytes_by_external_id[tour_id] = download_komoot_gpx(tour_id, share_token=share_token)
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else "unknown"
             raise RuntimeError(
                 f"ERROR: Could not fetch Komoot tour '{tour_id}' (HTTP {status}). "
-                "Check that the tour URL is valid and publicly accessible."
+                "Check that the tour URL is valid and publicly accessible, "
+                "or include a valid share_token in the Komoot URL."
             ) from exc
         activities = [komoot_tour_to_activity_model(komoot_payload, activity_ref)]
         after_epoch = -1
