@@ -515,9 +515,19 @@ def _is_alpine_hut_result(item: dict) -> bool:
     )
 
 
+def _is_saddle_result(item: dict) -> bool:
+    extratags = item.get("extratags") or {}
+    if str(extratags.get("natural", "")).strip().lower() == "saddle":
+        return True
+    return (
+        str(item.get("class", "")).strip().lower() == "natural"
+        and str(item.get("type", "")).strip().lower() == "saddle"
+    )
+
+
 def _is_nominatim_geo_match(item: dict) -> bool:
-    """OSM-backed place useful for summit sheet coords: peak or mountain hut."""
-    return _is_peak_result(item) or _is_alpine_hut_result(item)
+    """OSM-backed place useful for summit sheet coords: peak, mountain pass, or alpine hut."""
+    return _is_peak_result(item) or _is_saddle_result(item) or _is_alpine_hut_result(item)
 
 
 def _nominatim_query_variants(summit_name: str) -> List[str]:
@@ -545,7 +555,7 @@ def fetch_peak_from_nominatim(
 ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """
     Query Nominatim and return (ele_m, lat, lon) for the best geographic match.
-    - Accepts natural peaks or tourism=alpine_hut (mountain huts)
+    - Accepts natural peaks, mountain passes (natural=saddle), or tourism=alpine_hut (mountain huts)
     - Chooses nearest candidate to GPX start coordinates (Euclidean)
     - Returns None values when unavailable.
     """
@@ -614,7 +624,7 @@ def fetch_peak_from_nominatim(
 
     if not candidates:
         print(
-            f'WARNING: No peak or alpine_hut on OpenStreetMap for "{summit_name}" '
+            f'WARNING: No peak, saddle, or alpine_hut on OpenStreetMap for "{summit_name}" '
             "— altitude and coordinates left blank"
         )
         return None, None, None
