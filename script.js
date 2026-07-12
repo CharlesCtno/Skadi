@@ -1741,7 +1741,8 @@ const projectColors = {
     '4000': '#f1c232',
     'Aravis': '#a64d79',
     'Morges to Como': '#0000FF',
-    'Wien to Innsbruck': '#FF0000'
+    'Wien to Innsbruck': '#FF0000',
+    'Liberté & Patrie 2026': '#009E49'
 };
 
 // Default color for activities without a project
@@ -2353,7 +2354,7 @@ function buildTrackPopupContent(gpxName, season, type, grade, distance, duration
 }
 
 function buildLegendProjectRowsHtml() {
-    const bikeOnlyProjects = new Set(['Morges to Como', 'Wien to Innsbruck']);
+    const bikeOnlyProjects = new Set(['Morges to Como', 'Wien to Innsbruck', 'Liberté & Patrie 2026']);
     return Object.entries(projectColors)
         .filter(([projectName]) => !bikeOnlyProjects.has(projectName))
         .map(([projectName, color]) => (
