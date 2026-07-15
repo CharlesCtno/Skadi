@@ -15,9 +15,10 @@ on:
         required: true
         type: string
       project:
-        description: Project name for sheet + map color
-        required: true
+        description: 'Optional. Project name, or "Name #RRGGBB" (e.g. Liberté & Patrie 2026 #009E49). Blank = no project / default track color'
+        required: false
         type: string
+        default: ""
       destination:
         description: Target Google Sheet tab (Sommets Progrès vs Bikepacking)
         required: true

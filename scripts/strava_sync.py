@@ -678,6 +678,28 @@ COL_O_IDX = 14
 # Placeholder color for newly discovered projects (editable later in script.js).
 NEW_PROJECT_COLOR = "#E67E22"
 SCRIPT_JS_PATH = Path("script.js")
+# Optional trailing " #RGB" / " #RRGGBB" (hash included in the color).
+PROJECT_INPUT_COLOR_RE = re.compile(
+    r"^(?P<name>.*?)\s+(?P<color>#[0-9A-Fa-f]{3}(?:[0-9A-Fa-f]{3})?)\s*$"
+)
+
+
+def parse_project_input(raw: Optional[str]) -> Tuple[str, Optional[str]]:
+    """
+    Parse workflow/CLI project input.
+    - "Liberté & Patrie 2026 #009E49" -> ("Liberté & Patrie 2026", "#009E49")
+    - "My Project" -> ("My Project", None)
+    - "" / None -> ("", None)  # leave sheet project blank; map uses defaultColor
+    """
+    text = (raw or "").strip()
+    if not text:
+        return "", None
+    match = PROJECT_INPUT_COLOR_RE.match(text)
+    if not match:
+        return text, None
+    name = match.group("name").strip()
+    color = "#" + match.group("color")[1:].upper()
+    return name, color
 
 
 def _js_escape_single_quoted(value: str) -> str:
@@ -694,15 +716,24 @@ def _append_to_js_string_list(list_body: str, value: str) -> str:
     return f"{body} '{escaped}'"
 
 
-def ensure_project_color(project_name: str, destination: str) -> bool:
+def ensure_project_color(
+    project_name: str,
+    destination: str,
+    color: Optional[str] = None,
+) -> bool:
     """
     Ensure projectColors in script.js contains project_name.
-    Unknown projects get NEW_PROJECT_COLOR. For bikepacking, also add to bikeOnlyProjects.
+    Uses provided color when set, otherwise NEW_PROJECT_COLOR for new keys.
+    For bikepacking, also add to bikeOnlyProjects.
     Returns True if script.js was modified.
     """
     project = (project_name or "").strip()
     if not project or project.lower() == "no project":
         return False
+    color_value = (color or "").strip().upper() if color else ""
+    if color_value and not re.fullmatch(r"#[0-9A-F]{3}(?:[0-9A-F]{3})?", color_value):
+        print(f"WARNING: Ignoring invalid project color '{color}'.")
+        color_value = ""
     if not SCRIPT_JS_PATH.exists():
         print(f"WARNING: {SCRIPT_JS_PATH} not found; cannot auto-add project color for '{project}'.")
         return False
@@ -714,13 +745,14 @@ def ensure_project_color(project_name: str, destination: str) -> bool:
         return False
 
     block = colors_match.group(1)
-    key_names = re.findall(r"['\"]([^'\"]+)['\"]\s*:", block)
-    has_color = any(k.lower() == project.lower() for k in key_names)
+    key_entries = re.findall(r"['\"]([^'\"]+)['\"]\s*:\s*['\"]([^'\"]+)['\"]", block)
+    existing_key = next((k for k, _ in key_entries if k.lower() == project.lower()), None)
     changed = False
 
-    if not has_color:
+    if existing_key is None:
+        use_color = color_value or NEW_PROJECT_COLOR
         escaped = _js_escape_single_quoted(project)
-        new_entry = f"    '{escaped}': '{NEW_PROJECT_COLOR}'"
+        new_entry = f"    '{escaped}': '{use_color}'"
         block_stripped = block.rstrip()
         if block_stripped and not re.search(r",\s*$", block_stripped):
             block_stripped += ","
@@ -728,9 +760,25 @@ def ensure_project_color(project_name: str, destination: str) -> bool:
         content = content[: colors_match.start(1)] + new_block + content[colors_match.end(1) :]
         changed = True
         print(
-            f"Auto-added projectColors['{project}'] = '{NEW_PROJECT_COLOR}' "
-            "(edit script.js later to customize)."
+            f"Auto-added projectColors['{project}'] = '{use_color}'"
+            + ("." if color_value else " (placeholder; edit script.js later to customize).")
         )
+    elif color_value:
+        # Explicit color in workflow input: update existing entry when it differs.
+        current = next(v for k, v in key_entries if k == existing_key)
+        if current.upper() != color_value:
+            key_pattern = re.compile(
+                rf"(['\"]){re.escape(existing_key)}\1\s*:\s*['\"][^'\"]*['\"]"
+            )
+            new_block, n = key_pattern.subn(
+                rf"\1{existing_key}\1: '{color_value}'",
+                block,
+                count=1,
+            )
+            if n:
+                content = content[: colors_match.start(1)] + new_block + content[colors_match.end(1) :]
+                changed = True
+                print(f"Updated projectColors['{existing_key}'] = '{color_value}'.")
 
     if destination == "bikepacking":
         set_match = re.search(
@@ -1591,8 +1639,8 @@ def main() -> None:
     parser.add_argument(
         "--project",
         dest="project",
-        help="Project name for sheet column + map color. Also reads PROJECT env if unset. "
-        "Required in manual sync mode.",
+        help='Optional project for sheet + map color. Format: "Name" or "Name #RRGGBB". '
+        "Also reads PROJECT env if unset. Blank = no project (default track color).",
     )
     args = parser.parse_args()
 
@@ -1607,11 +1655,14 @@ def main() -> None:
     if source == "komoot" and not activity_ref:
         raise RuntimeError("Komoot source requires --activity-ref / ACTIVITY_REF with a Komoot URL.")
 
-    project = (args.project or _optional_env("PROJECT")).strip()
-    if is_manual_mode and not project:
-        raise RuntimeError(
-            "Manual sync requires --project / PROJECT (project name for sheet + map color)."
+    project, project_color = parse_project_input(args.project or _optional_env("PROJECT"))
+    if project:
+        print(
+            f"Project input: name='{project}'"
+            + (f", color='{project_color}'" if project_color else " (color from script.js / placeholder)")
         )
+    else:
+        print("Project input blank: leaving sheet project empty (map defaultColor).")
 
     spreadsheet_id = _required_env("GOOGLE_SHEETS_SPREADSHEET_ID")
     sheet_name = SHEET_TAB_SOMMETS if dest == "sommets" else SHEET_TAB_BIKEPACKING
@@ -1819,7 +1870,7 @@ def main() -> None:
             )
 
         if project:
-            ensure_project_color(project, dest)
+            ensure_project_color(project, dest, color=project_color)
 
         synced += 1
         synced_names.append(activity.name)

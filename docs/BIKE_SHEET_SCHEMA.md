@@ -32,7 +32,7 @@ If distances/durations use **European decimals** (`180,8`) **without** quoting t
 ## Data pipeline
 
 - **GPX → GeoJSON:** `scripts/convert_gpx.py` writes `data/bike/processed/<stem>.geojson` from `data/bike/raw/<stem>.gpx`.
-- **Manual source sync** (`scripts/strava_sync.py --source strava|komoot --activity-ref ... --project "<name>" --destination bikepacking`) writes to this tab (GPX under `data/bike/raw/`). **Match order:** (1) **H** = activity URL (Strava or Komoot); (2) **A** matches the activity title (normalized) and **H** is empty (pre-planned row); (3) else **insert** a new row (full **A–J** with **A** = activity name, **G** = workflow project, **J** blank). For (1) and (2), **B–F** and **H–I** are updated; empty **A** / **G** are filled from the activity name / project input — non-empty name, project, and journal cells are preserved.
+- **Manual source sync** (`scripts/strava_sync.py --source strava|komoot --activity-ref ... [--project "Name" | --project "Name #RRGGBB"] --destination bikepacking`) writes to this tab (GPX under `data/bike/raw/`). **Match order:** (1) **H** = activity URL (Strava or Komoot); (2) **A** matches the activity title (normalized) and **H** is empty (pre-planned row); (3) else **insert** a new row (full **A–J** with **A** = activity name, **G** = project name when provided, **J** blank). For (1) and (2), **B–F** and **H–I** are updated; empty **A** / **G** are filled from the activity name / project input — non-empty name, project, and journal cells are preserved. Blank `--project` leaves **G** empty (No Project / default track color on the map).
 
 ## Related
 
