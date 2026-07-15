@@ -14,6 +14,10 @@ on:
         description: Exact Strava activity name or Komoot activity URL
         required: true
         type: string
+      project:
+        description: Project name for sheet + map color
+        required: true
+        type: string
       destination:
         description: Target Google Sheet tab (Sommets Progrès vs Bikepacking)
         required: true
@@ -63,9 +67,10 @@ jobs:
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           SOURCE: ${{ inputs.source }}
           ACTIVITY_REF: ${{ inputs.activity_ref }}
+          PROJECT: ${{ inputs.project }}
           DESTINATION: ${{ inputs.destination }}
         run: |
-          python scripts/strava_sync.py --source "${SOURCE}" --activity-ref "${ACTIVITY_REF}" --destination "${DESTINATION}"
+          python scripts/strava_sync.py --source "${SOURCE}" --activity-ref "${ACTIVITY_REF}" --project "${PROJECT}" --destination "${DESTINATION}"
 
       - name: Convert only new GPX to GeoJSON
         run: |
@@ -109,7 +114,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/processed/ data/bike/processed/ data/strava_last_sync.json
+          git add data/processed/ data/bike/processed/ data/strava_last_sync.json script.js
           if git diff --staged --quiet; then
             echo "No changes to commit."
             exit 0

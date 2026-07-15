@@ -133,19 +133,19 @@ Documentation quick links:
 - `docs/ADVENTURE_MODE_TASKER_MVP.md` – Phone trigger request templates for HTTP Shortcuts / Automate
 - `docs/ADVENTURE_MODE_AUTOMATE_LOOP.md` – Automate background loop + offline buffer strategy
 - `admin/enrich.html` – Mobile admin page (session token) to enrich points with note/photo; resolves `live/` paths from repo root
-- `scripts/strava_sync.py` – Manual sync entrypoint for Strava or Komoot; `--source strava|komoot`, `--activity-ref "<exact Strava name or Komoot URL>"`, and `--destination sommets|bikepacking` select source + sheet target; pushes GPX to `data/raw/` or `data/bike/raw/`. For `source=komoot` on Sommets, all rows sharing the same tour URL in column `P` are updated; OSM altitude/coordinates use each row’s summit name in column `D`, and planned status (`à gravir` / `à faire`) in column `C` is cleared.
+- `scripts/strava_sync.py` – Manual sync entrypoint for Strava or Komoot; `--source strava|komoot`, `--activity-ref "<exact Strava name or Komoot URL>"`, required `--project "<name>"`, and `--destination sommets|bikepacking` select source + sheet target; pushes GPX to `data/raw/` or `data/bike/raw/`. Project is written to bike column **G** or summits column **O** (when empty). Unknown projects are auto-added to `projectColors` in `script.js` with placeholder `#E67E22` (bike destinations also join `bikeOnlyProjects`). For `source=komoot` on Sommets, all rows sharing the same tour URL in column `P` are updated; OSM altitude/coordinates use each row’s summit name in column `D`, and planned status (`à gravir` / `à faire`) in column `C` is cleared.
 - `scripts/strava_backfill_photos.py` – One-time backfill of photo URLs into column S for existing activities
 - `scripts/convert_gpx.py` – Converts GPX files to GeoJSON (run automatically via GitHub Actions)
 - `scripts/adventure_live_dispatch.py` – Applies live trip actions (`start_trip`, `start_live_day`, `add_point`, `enrich_point`, `stop_live_day`, `stop_trip`)
 - `scripts/test_sheet_sync.py` – Local test script to simulate a Strava sync without API calls
-- `.github/workflows/strava_sync.yml` – Manual trigger: source (`strava` / `komoot`) + activity reference (Strava exact name or Komoot URL) + destination (`sommets` / `bikepacking`), runs full sync
+- `.github/workflows/strava_sync.yml` – Manual trigger: source (`strava` / `komoot`) + activity reference (Strava exact name or Komoot URL) + **project** (required) + destination (`sommets` / `bikepacking`); commits processed GeoJSON and any `script.js` color updates
 - `.github/workflows/convert_gpx.yml` – Auto-triggered when GPX files are pushed to raw folders
 - `.github/workflows/adventure_live_dispatch.yml` – Manual/API dispatch endpoint for phone-triggered live updates
 - `.github/workflows/deploy-pages.yml` – Deploys site on push to `main`, manual dispatch, and after successful **Adventure Live Dispatch** or **Strava Sync (Manual)** runs (`workflow_run`)
 
 ## Conventions
 
-- Project colors defined in `projectColors` in `script.js`; markers and bike tracks colored by Project, summit tracks by activity type
+- Project colors defined in `projectColors` in `script.js`; markers and bike tracks colored by Project, summit tracks by activity type. New projects from manual sync get `#E67E22` until you change them there.
 - Completed summits have a snow cap on their triangle marker; "à faire" summits have no snow cap
 - Decimals must use dots in source data; no conversion happens in the frontend
 - GPX filename convention: activity name with spaces replaced by underscores + `.gpx` (e.g. `Mont_Telliers.gpx`)

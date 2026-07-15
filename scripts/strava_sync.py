@@ -673,6 +673,83 @@ def get_sheet_id(sheets_service, spreadsheet_id: str, sheet_name: str) -> int:
 
 # Column S = photo URLs (0-based index 18).
 COL_S_IDX = 18
+# Column O = Project (0-based index 14) on Sommets tab.
+COL_O_IDX = 14
+# Placeholder color for newly discovered projects (editable later in script.js).
+NEW_PROJECT_COLOR = "#E67E22"
+SCRIPT_JS_PATH = Path("script.js")
+
+
+def _js_escape_single_quoted(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def _append_to_js_string_list(list_body: str, value: str) -> str:
+    escaped = _js_escape_single_quoted(value)
+    body = list_body.rstrip()
+    if not body.strip():
+        return f"'{escaped}'"
+    if not body.endswith(","):
+        body += ","
+    return f"{body} '{escaped}'"
+
+
+def ensure_project_color(project_name: str, destination: str) -> bool:
+    """
+    Ensure projectColors in script.js contains project_name.
+    Unknown projects get NEW_PROJECT_COLOR. For bikepacking, also add to bikeOnlyProjects.
+    Returns True if script.js was modified.
+    """
+    project = (project_name or "").strip()
+    if not project or project.lower() == "no project":
+        return False
+    if not SCRIPT_JS_PATH.exists():
+        print(f"WARNING: {SCRIPT_JS_PATH} not found; cannot auto-add project color for '{project}'.")
+        return False
+
+    content = SCRIPT_JS_PATH.read_text(encoding="utf-8")
+    colors_match = re.search(r"const projectColors\s*=\s*\{(.*?)\n\};", content, flags=re.DOTALL)
+    if not colors_match:
+        print("WARNING: Could not locate projectColors object in script.js.")
+        return False
+
+    block = colors_match.group(1)
+    key_names = re.findall(r"['\"]([^'\"]+)['\"]\s*:", block)
+    has_color = any(k.lower() == project.lower() for k in key_names)
+    changed = False
+
+    if not has_color:
+        escaped = _js_escape_single_quoted(project)
+        new_entry = f"    '{escaped}': '{NEW_PROJECT_COLOR}'"
+        block_stripped = block.rstrip()
+        if block_stripped and not re.search(r",\s*$", block_stripped):
+            block_stripped += ","
+        new_block = block_stripped + "\n" + new_entry + "\n"
+        content = content[: colors_match.start(1)] + new_block + content[colors_match.end(1) :]
+        changed = True
+        print(
+            f"Auto-added projectColors['{project}'] = '{NEW_PROJECT_COLOR}' "
+            "(edit script.js later to customize)."
+        )
+
+    if destination == "bikepacking":
+        set_match = re.search(
+            r"bikeOnlyProjects\s*=\s*new Set\(\[([^\]]*)\]\)",
+            content,
+            flags=re.DOTALL,
+        )
+        if set_match:
+            existing_set = set_match.group(1)
+            existing_set_names = re.findall(r"['\"]([^'\"]+)['\"]", existing_set)
+            if not any(n.lower() == project.lower() for n in existing_set_names):
+                mid = _append_to_js_string_list(existing_set, project)
+                content = content[: set_match.start(1)] + mid + content[set_match.end(1) :]
+                changed = True
+                print(f"Added '{project}' to bikeOnlyProjects in script.js.")
+
+    if changed:
+        SCRIPT_JS_PATH.write_text(content, encoding="utf-8")
+    return changed
 
 
 def update_existing_row_auto_fields(
@@ -692,6 +769,7 @@ def update_existing_row_auto_fields(
     gpx_file: str,
     activity_url: str,
     photo_urls_value: Optional[str] = None,
+    project: str = "",
 ) -> None:
     sheet_type = sheet_type_from_strava_activity_type(strava_activity_type)
     data = [
@@ -712,6 +790,9 @@ def update_existing_row_auto_fields(
     # Do not overwrite I (Type) if already filled.
     if not _row_cell(existing_row, 8) and sheet_type:
         data.append({"range": f"{sheet_name}!I{row_1}", "values": [[sheet_type]]})
+    # Do not overwrite O (Project) if already filled.
+    if project and not _row_cell(existing_row, COL_O_IDX):
+        data.append({"range": f"{sheet_name}!O{row_1}", "values": [[project]]})
     # Do not overwrite P (Strava URL) if already filled.
     if not _row_cell(existing_row, 15) and activity_url:
         data.append({"range": f"{sheet_name}!P{row_1}", "values": [[activity_url]]})
@@ -1021,6 +1102,7 @@ def write_bikepacking_autofilled_ranges(
     spreadsheet_id: str,
     sheet_name: str,
     row_1: int,
+    existing_row: List[str],
     season: str,
     distance_km: str,
     duration_h: str,
@@ -1028,10 +1110,12 @@ def write_bikepacking_autofilled_ranges(
     gpx_file_value: str,
     activity_url: str,
     photo_urls_value: str,
+    activity_name: str = "",
+    project: str = "",
 ) -> None:
     """
-    In-place update of B–F and H–I only (existing row). Avoids overwriting A / G / J
-    so pre-filled name, project, and journal paths stay intact.
+    In-place update of B–F and H–I (existing row). Also fills empty A (name) / G (project).
+    Never overwrites non-empty A / G / J.
     """
     data = [
         {
@@ -1043,6 +1127,10 @@ def write_bikepacking_autofilled_ranges(
             "values": [[activity_url, photo_urls_value or "none"]],
         },
     ]
+    if not _row_cell(existing_row, 0) and activity_name:
+        data.append({"range": f"{sheet_name}!A{row_1}", "values": [[activity_name]]})
+    if not _row_cell(existing_row, 6) and project:
+        data.append({"range": f"{sheet_name}!G{row_1}", "values": [[project]]})
     for item in data:
         sheets_service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
@@ -1064,6 +1152,7 @@ def upsert_bikepacking_activity_to_sheet(
     elevation_gain_m: str,
     gpx_file_value: str,
     activity_url: str,
+    project: str = "",
     access_token: Optional[str] = None,
     activity_id: Optional[int] = None,
     photo_urls_value: Optional[str] = None,
@@ -1074,7 +1163,7 @@ def upsert_bikepacking_activity_to_sheet(
     Match order: (1) column H == Strava URL, (2) column A == activity name and H empty
     (pre-planned row), (3) insert a new row (insertDimension + full A:J).
 
-    Updates (1–2) write B–F and H–I only; new rows use insert_new_row_at with A/G/J blank.
+    Updates (1–2) write B–F and H–I, plus empty A/G; new rows set A=name, G=project.
     """
     if photo_urls_value is None:
         if access_token and activity_id is not None:
@@ -1102,12 +1191,14 @@ def upsert_bikepacking_activity_to_sheet(
 
     match_row_1 = find_bike_row_by_strava_url(values, activity_url)
     photo_final = photo_urls_value or "none"
+    project_value = (project or "").strip()
     if match_row_1 is not None:
         write_bikepacking_autofilled_ranges(
             sheets_service=sheets_service,
             spreadsheet_id=spreadsheet_id,
             sheet_name=sheet_name,
             row_1=match_row_1,
+            existing_row=values[match_row_1 - 1],
             season=season,
             distance_km=distance_km,
             duration_h=duration_h,
@@ -1115,6 +1206,8 @@ def upsert_bikepacking_activity_to_sheet(
             gpx_file_value=gpx_file_value,
             activity_url=activity_url,
             photo_urls_value=photo_final,
+            activity_name=activity_name,
+            project=project_value,
         )
         print(f"UPDATED bikepacking row {match_row_1} for URL {activity_url}")
         return {"matched": 1, "created": 0}
@@ -1126,6 +1219,7 @@ def upsert_bikepacking_activity_to_sheet(
             spreadsheet_id=spreadsheet_id,
             sheet_name=sheet_name,
             row_1=planned_row_1,
+            existing_row=values[planned_row_1 - 1],
             season=season,
             distance_km=distance_km,
             duration_h=duration_h,
@@ -1133,6 +1227,8 @@ def upsert_bikepacking_activity_to_sheet(
             gpx_file_value=gpx_file_value,
             activity_url=activity_url,
             photo_urls_value=photo_final,
+            activity_name=activity_name,
+            project=project_value,
         )
         print(
             f"UPDATED bikepacking row {planned_row_1} for planned name "
@@ -1142,13 +1238,13 @@ def upsert_bikepacking_activity_to_sheet(
 
     insert_row_1 = len(values) + 1
     new_row = [
-        "",
+        activity_name,
         season,
         distance_km,
         duration_h,
         elevation_gain_m,
         gpx_file_value,
-        "",
+        project_value,
         activity_url,
         photo_final,
         "",
@@ -1193,12 +1289,14 @@ def _sync_existing_summit_row(
     activity_url: str,
     photo_urls_value: str,
     match_method: str,
+    project: str = "",
 ) -> None:
     existing_row = values[match_row_1 - 1]
     status_before = _row_cell(existing_row, 2)
     had_ele = bool(_row_cell(existing_row, 4))
     had_lat = bool(_row_cell(existing_row, 5))
     had_lon = bool(_row_cell(existing_row, 6))
+    project_value = (project or "").strip()
 
     update_existing_row_auto_fields(
         sheets_service=sheets_service,
@@ -1217,6 +1315,7 @@ def _sync_existing_summit_row(
         gpx_file=gpx_file_value,
         activity_url=activity_url,
         photo_urls_value=photo_urls_value,
+        project=project_value,
     )
 
     row = existing_row
@@ -1238,6 +1337,8 @@ def _sync_existing_summit_row(
     row[11] = duration_h  # L
     row[12] = elevation_gain_m  # M
     row[13] = gpx_file_value  # N
+    if project_value and not _row_cell(row, COL_O_IDX):
+        row[COL_O_IDX] = project_value  # O
     if not _row_cell(row, 15) and activity_url:
         row[15] = activity_url  # P
     if not _row_cell(row, COL_S_IDX):
@@ -1275,6 +1376,7 @@ def upsert_activity_summits_to_sheet(
     access_token: Optional[str] = None,
     activity_id: Optional[int] = None,
     photo_urls_value: Optional[str] = None,
+    project: str = "",
 ) -> Dict[str, int]:
     """
     Upsert summit rows for an activity.
@@ -1293,6 +1395,7 @@ def upsert_activity_summits_to_sheet(
     if photo_urls_value is None:
         photo_urls_value = "none"
 
+    project_value = (project or "").strip()
     range_name = f"{sheet_name}!{SHEET_RANGE}"
     values_resp = sheets_service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id,
@@ -1338,6 +1441,7 @@ def upsert_activity_summits_to_sheet(
                     activity_url=activity_url,
                     photo_urls_value=photo_urls_value,
                     match_method="url",
+                    project=project_value,
                 )
                 matched += 1
             return {
@@ -1372,6 +1476,7 @@ def upsert_activity_summits_to_sheet(
                 activity_url=activity_url,
                 photo_urls_value=photo_urls_value,
                 match_method=match_method,
+                project=project_value,
             )
             matched += 1
             continue
@@ -1386,8 +1491,8 @@ def upsert_activity_summits_to_sheet(
             insert_row_1 = len(values) + 1
             print('WARNING: No existing coordinates found in sheet — appended at bottom')
 
-        # A..S: D, H, K-N, P and S are auto-filled; E/F/G come from OSM when available.
-        # I/J, O, Q, R stay blank by design.
+        # A..S: D, H, K-N, O (project), P and S are auto-filled; E/F/G come from OSM when available.
+        # I/J, Q, R stay blank by design (I may be set from activity type).
         sheet_type = sheet_type_from_strava_activity_type(strava_activity_type)
         new_row = [
             "",  # A
@@ -1404,7 +1509,7 @@ def upsert_activity_summits_to_sheet(
             duration_h,  # L
             elevation_gain_m,  # M
             gpx_file_value,  # N
-            "",  # O
+            project_value,  # O
             activity_url,  # P
             "",  # Q
             "",  # R
@@ -1483,6 +1588,12 @@ def main() -> None:
         help='Sync target: "sommets" (Progrès tab) or "bikepacking" (Bikepacking tab). '
         "Also reads DESTINATION env if unset.",
     )
+    parser.add_argument(
+        "--project",
+        dest="project",
+        help="Project name for sheet column + map color. Also reads PROJECT env if unset. "
+        "Required in manual sync mode.",
+    )
     args = parser.parse_args()
 
     dest = parse_destination(args.destination or _optional_env("DESTINATION"))
@@ -1495,6 +1606,12 @@ def main() -> None:
     is_manual_mode = bool(manual_activity_name) if source == "strava" else bool(activity_ref)
     if source == "komoot" and not activity_ref:
         raise RuntimeError("Komoot source requires --activity-ref / ACTIVITY_REF with a Komoot URL.")
+
+    project = (args.project or _optional_env("PROJECT")).strip()
+    if is_manual_mode and not project:
+        raise RuntimeError(
+            "Manual sync requires --project / PROJECT (project name for sheet + map color)."
+        )
 
     spreadsheet_id = _required_env("GOOGLE_SHEETS_SPREADSHEET_ID")
     sheet_name = SHEET_TAB_SOMMETS if dest == "sommets" else SHEET_TAB_BIKEPACKING
@@ -1680,6 +1797,7 @@ def main() -> None:
                 access_token=access_token if source == "strava" else None,
                 activity_id=int(activity.external_id) if source == "strava" else None,
                 photo_urls_value="none" if source == "komoot" else None,
+                project=project,
             )
         else:
             upsert_result = upsert_bikepacking_activity_to_sheet(
@@ -1694,10 +1812,14 @@ def main() -> None:
                 elevation_gain_m=activity.elevation_gain_m,
                 gpx_file_value=gpx_file_value,
                 activity_url=activity_url,
+                project=project,
                 access_token=access_token if source == "strava" else None,
                 activity_id=int(activity.external_id) if source == "strava" else None,
                 photo_urls_value="none" if source == "komoot" else None,
             )
+
+        if project:
+            ensure_project_color(project, dest)
 
         synced += 1
         synced_names.append(activity.name)
